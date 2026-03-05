@@ -21,7 +21,7 @@ async function loadData() {
   startClock();                  // Start countdown
 }
 
-// Fetch follower count from worker (replace with mock for testing if needed)
+// Mock or actual follower fetch
 async function getFollowers() {
   // Uncomment below for actual fetch
   /*
@@ -36,7 +36,7 @@ async function getFollowers() {
   followers = previousFollowers === 0 ? 4258 : 4280;
 }
 
-// Binary search to find rank index in populationData
+// Binary search to find rank index
 function findRank(value) {
   let low = 0, high = populationData.length - 1;
   while (low <= high) {
@@ -56,7 +56,6 @@ function renderCards(initial=false) {
   const above = populationData.slice(index, index + CARD_COUNT).reverse(); // Next to beat
   const below = populationData.slice(Math.max(0, index - CARD_COUNT), index).reverse(); // Bigger than
 
-  // Clear container
   cardsContainer.innerHTML = "";
 
   // Top cards
@@ -91,14 +90,16 @@ function renderCards(initial=false) {
 function animateCards(deltaIndex) {
   const topCards = document.querySelectorAll(".top-card");
   const bottomCards = document.querySelectorAll(".bottom-card");
-  const moveDistance = 60; // px per card for visual spacing
 
-  const direction = deltaIndex > 0 ? 1 : -1; // 1 = follower increased (cards move down), -1 = follower decreased
+  const direction = deltaIndex > 0 ? 1 : -1; // 1 = follower up, -1 = follower down
+  const moveDistance = 60; // px per card
+
+  const duration = 2000; // 2 seconds animation
 
   topCards.forEach((card, i) => {
-    card.style.transition = "transform 0.8s ease, filter 0.8s ease";
+    card.style.transition = `transform ${duration}ms ease, filter ${duration}ms ease`;
     card.style.transform = `translateY(${moveDistance * direction}px)`;
-    card.style.filter = "blur(2px)";
+    card.style.filter = "blur(3px)";
     setTimeout(() => {
       card.style.transform = `translateY(0px)`;
       card.style.filter = "blur(0px)";
@@ -106,9 +107,9 @@ function animateCards(deltaIndex) {
   });
 
   bottomCards.forEach((card, i) => {
-    card.style.transition = "transform 0.8s ease, filter 0.8s ease";
+    card.style.transition = `transform ${duration}ms ease, filter ${duration}ms ease`;
     card.style.transform = `translateY(${moveDistance * direction}px)`;
-    card.style.filter = "blur(2px)";
+    card.style.filter = "blur(3px)";
     setTimeout(() => {
       card.style.transform = `translateY(0px)`;
       card.style.filter = "blur(0px)";
@@ -116,23 +117,25 @@ function animateCards(deltaIndex) {
   });
 }
 
-// Animate follower card “lift” motion
+// Animate follower card “dramatic lift”
 function animateFollowerCard(deltaIndex) {
   const followerCard = document.querySelector(".card.follower");
   if (!followerCard) return;
 
-  const moveDistance = 20; // px vertical lift
-  const direction = deltaIndex > 0 ? -1 : 1; // move up if delta > 0, down if delta < 0
+  const direction = deltaIndex > 0 ? -1 : 1; // up if followers increased
+  const liftDistance = 40; // px
+  const durationUp = 800;  // lift up duration
+  const durationDown = 1200; // settle down duration
 
-  followerCard.style.transition = "transform 0.3s ease, box-shadow 0.3s ease";
-  followerCard.style.transform = `translateY(${moveDistance * direction}px)`;
-  followerCard.style.boxShadow = "0 8px 20px rgba(0,0,0,0.3)";
+  followerCard.style.transition = `transform ${durationUp}ms ease-out, box-shadow ${durationUp}ms ease-out`;
+  followerCard.style.transform = `translateY(${liftDistance * direction}px)`;
+  followerCard.style.boxShadow = "0 16px 40px rgba(0,0,0,0.4)";
 
   setTimeout(() => {
-    followerCard.style.transition = "transform 0.5s ease, box-shadow 0.5s ease";
+    followerCard.style.transition = `transform ${durationDown}ms ease-in-out, box-shadow ${durationDown}ms ease-in-out`;
     followerCard.style.transform = "translateY(0px)";
     followerCard.style.boxShadow = "0 2px 6px rgba(0,0,0,0.1)";
-  }, 300);
+  }, durationUp);
 }
 
 // Milliseconds until next GMT minute
@@ -141,7 +144,7 @@ function msToNextMinute() {
   return (60 - now.getUTCSeconds())*1000 - now.getUTCMilliseconds();
 }
 
-// Countdown timer + update scheduler
+// Countdown timer + scheduler
 function startClock() {
   function updateTimer() {
     const now = new Date();
