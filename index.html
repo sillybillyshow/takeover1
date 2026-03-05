@@ -1,43 +1,117 @@
-<script>
-  const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TikTok Follower Count</title>
 
-  const countEl = document.getElementById("count");
-
-  // Create countdown element
-  const countdownEl = document.createElement("div");
-  countdownEl.style.marginTop = "20px";
-  countdownEl.style.fontSize = "1.5em";
-  document.body.appendChild(countdownEl);
-
-  let secondsRemaining = 60;
-  let isFetching = false;
-
-  async function updateFollowerCount() {
-    if (isFetching) return; // Prevent overlapping calls
-    isFetching = true;
-
-    try {
-      const res = await fetch(workerURL);
-      const data = await res.json();
-      countEl.textContent = data.followers.toLocaleString();
-      secondsRemaining = 60; // Reset countdown after successful fetch
-    } catch (err) {
-      countEl.textContent = "Error";
-      console.error(err);
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 80px;
+      background: #f9f9f9;
     }
 
-    isFetching = false;
-  }
+    h1 {
+      margin-bottom: 20px;
+    }
 
-  // Countdown timer (runs every second)
-  setInterval(() => {
-    secondsRemaining--;
-    if (secondsRemaining <= 0) {
+    #count {
+      font-size: 5em;
+      color: #FF0050;
+      margin: 20px 0;
+    }
+
+    #count.loading {
+      opacity: 0.6;
+    }
+
+    #countdown {
+      margin-top: 15px;
+      font-size: 1.2em;
+      color: #666;
+    }
+
+    .progress-container {
+      width: 300px;
+      height: 10px;
+      background: #ddd;
+      margin: 20px auto;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 100%;
+      background: #FF0050;
+      transition: width 1s linear;
+    }
+  </style>
+
+  <script defer>
+    document.addEventListener("DOMContentLoaded", () => {
+      const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev";
+
+      const countEl = document.getElementById("count");
+      const countdownEl = document.getElementById("countdown");
+      const progressBar = document.getElementById("progress-bar");
+
+      const REFRESH_INTERVAL = 60; // seconds
+      let secondsRemaining = REFRESH_INTERVAL;
+      let isFetching = false;
+
+      async function updateFollowerCount() {
+        if (isFetching) return;
+        isFetching = true;
+
+        countEl.classList.add("loading");
+
+        try {
+          const res = await fetch(workerURL);
+          const data = await res.json();
+          countEl.textContent = data.followers.toLocaleString();
+        } catch (err) {
+          countEl.textContent = "Error";
+          console.error(err);
+        }
+
+        countEl.classList.remove("loading");
+        secondsRemaining = REFRESH_INTERVAL;
+        isFetching = false;
+      }
+
+      // Countdown + progress bar tick
+      setInterval(() => {
+        secondsRemaining--;
+
+        if (secondsRemaining <= 0) {
+          updateFollowerCount();
+        }
+
+        countdownEl.textContent = `Refreshing in ${secondsRemaining}s`;
+
+        const percent = (secondsRemaining / REFRESH_INTERVAL) * 100;
+        progressBar.style.width = percent + "%";
+
+      }, 1000);
+
+      // Initial load
       updateFollowerCount();
-    }
-    countdownEl.textContent = `Refreshing in ${secondsRemaining}s`;
-  }, 1000);
+    });
+  </script>
+</head>
 
-  // Initial load
-  updateFollowerCount();
-</script>
+<body>
+  <h1>My TikTok Follower Count</h1>
+
+  <div id="count">Loading...</div>
+
+  <div class="progress-container">
+    <div class="progress-bar" id="progress-bar"></div>
+  </div>
+
+  <div id="countdown">Refreshing in 60s</div>
+
+</body>
+</html>
