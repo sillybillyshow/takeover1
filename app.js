@@ -5,33 +5,23 @@ let populationData = [];
 let followers = 0;
 let previousFollowers = 0;
 
-const CARD_COUNT = 5; // Number of top/bottom cards
+const CARD_COUNT = 5;
 const cardsContainer = document.getElementById("cards-container");
 const countdownEl = document.getElementById("countdown");
 const barEl = document.getElementById("bar");
 
-// Load population data and initial follower count
 async function loadData() {
   const popRes = await fetch("populationdata.json");
   populationData = await popRes.json();
   populationData.sort((a,b) => a.population - b.population);
 
-  await getFollowers();          // Initial follower fetch
-  renderCards(true);             // Initial render
-  startClock();                  // Start countdown
+  await getFollowers();
+  renderCards(true);
+  startClock();
 }
 
-// Mock or actual follower fetch
+// Mock follower fetch for testing
 async function getFollowers() {
-  // Uncomment below for actual fetch
-  /*
-  const res = await fetch(workerURL);
-  const data = await res.json();
-  previousFollowers = followers;
-  followers = data.followers;
-  */
-
-  // Mock for testing
   previousFollowers = followers;
   followers = previousFollowers === 0 ? 4258 : 4280;
 }
@@ -47,14 +37,14 @@ function findRank(value) {
   return low;
 }
 
-// Render leaderboard snapshot
+// Render cards snapshot
 function renderCards(initial=false) {
   const index = findRank(followers);
   const oldIndex = findRank(previousFollowers);
   const deltaIndex = index - oldIndex;
 
-  const above = populationData.slice(index, index + CARD_COUNT).reverse(); // Next to beat
-  const below = populationData.slice(Math.max(0, index - CARD_COUNT), index).reverse(); // Bigger than
+  const above = populationData.slice(index, index + CARD_COUNT).reverse();
+  const below = populationData.slice(Math.max(0, index - CARD_COUNT), index).reverse();
 
   cardsContainer.innerHTML = "";
 
@@ -81,61 +71,60 @@ function renderCards(initial=false) {
   });
 
   if (!initial && deltaIndex !== 0) {
-    animateCards(deltaIndex);
-    animateFollowerCard(deltaIndex);
+    animateOvertaking(deltaIndex);
   }
 }
 
-// Animate surrounding cards sliding past follower card
-function animateCards(deltaIndex) {
+// Overtaking animation sequence
+function animateOvertaking(deltaIndex) {
+  const followerCard = document.querySelector(".card.follower");
   const topCards = document.querySelectorAll(".top-card");
   const bottomCards = document.querySelectorAll(".bottom-card");
 
-  const direction = deltaIndex > 0 ? 1 : -1; // 1 = follower up, -1 = follower down
-  const moveDistance = 60; // px per card
-
-  const duration = 2000; // 2 seconds animation
-
-  topCards.forEach((card, i) => {
-    card.style.transition = `transform ${duration}ms ease, filter ${duration}ms ease`;
-    card.style.transform = `translateY(${moveDistance * direction}px)`;
-    card.style.filter = "blur(3px)";
-    setTimeout(() => {
-      card.style.transform = `translateY(0px)`;
-      card.style.filter = "blur(0px)";
-    }, 50);
-  });
-
-  bottomCards.forEach((card, i) => {
-    card.style.transition = `transform ${duration}ms ease, filter ${duration}ms ease`;
-    card.style.transform = `translateY(${moveDistance * direction}px)`;
-    card.style.filter = "blur(3px)";
-    setTimeout(() => {
-      card.style.transform = `translateY(0px)`;
-      card.style.filter = "blur(0px)";
-    }, 50);
-  });
-}
-
-// Animate follower card “dramatic lift”
-function animateFollowerCard(deltaIndex) {
-  const followerCard = document.querySelector(".card.follower");
   if (!followerCard) return;
 
-  const direction = deltaIndex > 0 ? -1 : 1; // up if followers increased
-  const liftDistance = 40; // px
-  const durationUp = 800;  // lift up duration
-  const durationDown = 1200; // settle down duration
+  const direction = deltaIndex > 0 ? 1 : -1; // 1 = follower increased (cards move down), -1 = follower decreased
+  const liftDistance = 50;
+  const moveDistance = 60; // px per card
+  const liftDuration = 500;
+  const moveDuration = 2000;
+  const settleDuration = 700;
 
-  followerCard.style.transition = `transform ${durationUp}ms ease-out, box-shadow ${durationUp}ms ease-out`;
-  followerCard.style.transform = `translateY(${liftDistance * direction}px)`;
-  followerCard.style.boxShadow = "0 16px 40px rgba(0,0,0,0.4)";
+  // 1️⃣ Lift follower card
+  followerCard.style.transition = `transform ${liftDuration}ms ease-out, box-shadow ${liftDuration}ms ease-out`;
+  followerCard.style.transform = `translateY(${-liftDistance * direction}px)`;
+  followerCard.style.boxShadow = "0 20px 50px rgba(0,0,0,0.4)";
 
+  // 2️⃣ Move top/bottom cards after lift
   setTimeout(() => {
-    followerCard.style.transition = `transform ${durationDown}ms ease-in-out, box-shadow ${durationDown}ms ease-in-out`;
+    topCards.forEach(card => {
+      card.style.transition = `transform ${moveDuration}ms ease, filter ${moveDuration}ms ease`;
+      card.style.transform = `translateY(${moveDistance * direction}px)`;
+      card.style.filter = "blur(4px)";
+      setTimeout(() => {
+        card.style.transform = "translateY(0px)";
+        card.style.filter = "blur(0px)";
+      }, 50);
+    });
+
+    bottomCards.forEach(card => {
+      card.style.transition = `transform ${moveDuration}ms ease, filter ${moveDuration}ms ease`;
+      card.style.transform = `translateY(${moveDistance * direction}px)`;
+      card.style.filter = "blur(4px)";
+      setTimeout(() => {
+        card.style.transform = "translateY(0px)";
+        card.style.filter = "blur(0px)";
+      }, 50);
+    });
+
+  }, liftDuration);
+
+  // 3️⃣ Settle follower card after cards moved
+  setTimeout(() => {
+    followerCard.style.transition = `transform ${settleDuration}ms ease-in-out, box-shadow ${settleDuration}ms ease-in-out`;
     followerCard.style.transform = "translateY(0px)";
     followerCard.style.boxShadow = "0 2px 6px rgba(0,0,0,0.1)";
-  }, durationUp);
+  }, liftDuration + moveDuration);
 }
 
 // Milliseconds until next GMT minute
