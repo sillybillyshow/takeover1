@@ -1,74 +1,132 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <title>TikTok Follower Count</title>
-  <style>
-    body { font-family: Arial; text-align: center; margin-top: 80px; background: #f9f9f9; }
-    h1 { margin-bottom: 20px; }
-    #count { font-size: 5em; color: #FF0050; margin: 20px 0; transition: opacity 0.3s ease; }
-    #count.loading { opacity: 0.5; }
-    #countdown { margin-top: 15px; font-size: 1.2em; color: #666; }
-    .progress-container { width: 300px; height: 10px; background: #ddd; margin: 20px auto; border-radius: 10px; overflow: hidden; }
-    .progress-bar { height: 100%; width: 100%; background: #FF0050; transition: width 1s linear; }
-  </style>
-  <script defer>
-    document.addEventListener("DOMContentLoaded", () => {
-      const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev";
-      const countEl = document.getElementById("count");
-      const countdownEl = document.getElementById("countdown");
-      const progressBar = document.getElementById("progress-bar");
 
-      async function fetchFollowerCount() {
-        countEl.classList.add("loading");
-        try {
-          // Force fresh fetch from Worker
-          const res = await fetch(workerURL, { cache: "no-store" });
-          const data = await res.json();
-          if (data.followers !== undefined) {
-            countEl.textContent = data.followers.toLocaleString();
-          } else {
-            countEl.textContent = "Error";
-          }
-        } catch (err) {
-          console.error(err);
-          countEl.textContent = "Error";
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>TikTok vs Cities</title>
+
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0e0e0e;
+            color: white;
+            text-align: center;
         }
-        countEl.classList.remove("loading");
-      }
 
-      // Initial load
-      fetchFollowerCount();
-
-      let lastMinute = null;
-
-      function updateCountdown() {
-        const now = new Date();
-        const seconds = now.getUTCSeconds();
-        const minutes = now.getUTCMinutes();
-
-        const remaining = 60 - seconds;
-        countdownEl.textContent = `Refreshing in ${remaining}s`;
-        progressBar.style.width = (remaining / 60) * 100 + "%";
-
-        // Fetch new follower count exactly at GMT minute
-        if (minutes !== lastMinute) {
-          lastMinute = minutes;
-          fetchFollowerCount();
+        header {
+            padding: 20px;
         }
-      }
 
-      setInterval(updateCountdown, 1000);
-      updateCountdown();
-    });
-  </script>
+        h1 {
+            margin-bottom: 10px;
+        }
+
+        #followers {
+            font-size: 64px;
+            font-weight: bold;
+            color: #ff0050;
+        }
+
+        #countdown {
+            margin-top: 8px;
+            opacity: 0.7;
+        }
+
+        #progress {
+            height: 6px;
+            background: #333;
+            margin-top: 10px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        #bar {
+            height: 100%;
+            width: 0%;
+            background: #ff0050;
+        }
+
+        #rank {
+            padding: 20px;
+            max-width: 600px;
+            margin: auto;
+        }
+
+        .city {
+            padding: 5px 0;
+            font-size: 16px;
+        }
+
+        #map {
+            height: 60vh;
+            margin-top: 10px;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid #333;
+            margin: 20px 0;
+        }
+
+        @media(max-width:700px) {
+
+            #followers {
+                font-size: 42px;
+            }
+
+            #map {
+                height: 50vh;
+            }
+
+            .city {
+                font-size: 14px;
+            }
+
+        }
+    </style>
+
 </head>
+
 <body>
-  <h1>My TikTok Follower Count</h1>
-  <div id="count">Loading...</div>
-  <div class="progress-container">
-    <div class="progress-bar" id="progress-bar"></div>
-  </div>
-  <div id="countdown">Refreshing in 60s</div>
+
+    <header>
+
+        <h1>TikTok Followers</h1>
+
+        <div id="followers">Loading...</div>
+
+        <div id="countdown">Loading...</div>
+
+        <div id="progress">
+            <div id="bar"></div>
+        </div>
+
+    </header>
+
+    <section id="rank">
+
+        <h2>Bigger Than</h2>
+        <div id="above"></div>
+
+        <hr>
+
+        <h2>Next To Beat</h2>
+        <div id="below"></div>
+
+    </section>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <script src="app.js"></script>
+
 </body>
+
 </html>
