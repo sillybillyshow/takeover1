@@ -1,229 +1,221 @@
-const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev"
+// app.js
 
-let populationData = []
-let mapData = []
-let followers = 0
-let previousFollowers = 0
+const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev";
 
-let map
+let populationData = []; // full dataset for ranking
+let mapData = [];        // reduced dataset for map
+let followers = 0;
+let previousFollowers = 0;
+let map = null;
 
 async function loadData() {
+  // Load full population dataset
+  const popRes = await fetch("populationdata.json");
+  populationData = await popRes.json();
+  populationData.sort((a, b) => a.population - b.population);
 
-    const pop = await fetch("populationdata.json")
-    populationData = await pop.json()
+  // Load reduced dataset for map
+  const mapRes = await fetch("mapdata.json");
+  mapData = await mapRes.json();
 
-    populationData.sort((a, b) => a.population - b.population)
-
-    const mapres = await fetch("mapdata.json")
-    mapData = await mapres.json()
-
-    initMap()
-
-    startClock()
-
+  initMap();
+  startClock();
 }
 
+// Fetch followers from worker
 async function getFollowers() {
+  const res = await fetch(workerURL);
+  const data = await res.json();
 
-    const res = await fetch(workerURL)
-    const data = await res.json()
+  previousFollowers = followers;
+  followers = data.followers;
 
-    previousFollowers = followers
-    followers = data.followers
-
-    animateFollowerCount()
-
-    updateRank()
-
-    updateMap()
-
+  animateFollowerCount();
+  updateRank();
+  updateMap();
 }
 
+// Animate follower count smoothly
 function animateFollowerCount() {
+  const el = document.getElementById("followers");
+  const start = previousFollowers;
+  const end = followers;
+  const duration = 800;
+  let startTime = null;
 
-    const el = document.getElementById("followers")
+  function step(timestamp) {
+    if (!startTime) startTime = timestamp;
+    const progress = Math.min((timestamp - startTime) / duration, 1);
+    const val = Math.floor(start + (end - start) * progress);
+    el.textContent = val.toLocaleString();
+    if (progress < 1) requestAnimationFrame(step);
+  }
 
-    let start = previousFollowers
-    let end = followers
-
-    let duration = 800
-    let startTime = null
-
-    function step(t) {
-
-        if (!startTime) startTime = t
-
-        let progress = Math.min((t - startTime) / duration, 1)
-
-        let val = Math.floor(start + (end - start) * progress)
-
-        el.textContent = val.toLocaleString()
-
-        if (progress < 1) requestAnimationFrame(step)
-    }
-    requestAnimationFrame(step)
+  requestAnimationFrame(step);
 }
 
+// Binary search to find rank index
 function findRank(value) {
-    let low = 0
-    let high = populationData.length - 1
-    while (low <= high) {
-        let mid = Math.floor((low + high) / 2) if (populationData[mid].population < value) low = mid + 1
-        else high = mid - 1
-    }
-    return low
+  let low = 0;
+  let high = populationData.length - 1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (populationData[mid].population < value) low = mid + 1;
+    else high = mid - 1;
+  }
+  return low;
 }
 
+// Update the rank lists and trigger overtaking notifications
 function updateRank() {
-    const index = findRank(followers) const oldIndex = findRank(previousFollowers) const above = populationData.slice(index - 4, index) const below = populationData.slice(index, index + 4) const aboveBox = document.getElementById("above") const belowBox = document.getElementById("below") aboveBox.innerHTML = ""
-    belowBox.innerHTML = ""
-    above.reverse().forEach(c => {
-        aboveBox.innerHTML += `<div class="city">${c.city}, ${c.country} — ${c.population.toLocaleString()}</div>`
-    })
+  const index = findRank(followers);
+  const oldIndex = findRank(previousFollowers);
 
-    below.forEach(c => {
-        belowBox.innerHTML += `<div class="city">${c.city}, ${c.country} — ${c.population.toLocaleString()}</div>`
-    })
+  const above = populationData.slice(Math.max(0, index - 4), index);
+  const below = populationData.slice(index, index + 4);
 
-    if (index > oldIndex) {
+  const aboveBox = document.getElementById("above");
+  const belowBox = document.getElementById("below");
 
-        const passed = populationData.slice(oldIndex, index)
+  aboveBox.innerHTML = "";
+  belowBox.innerHTML = "";
 
-        passed.forEach(city => {
-            showOvertake(city)
-        })
+  above.reverse().forEach(c => {
+    aboveBox.innerHTML += `<div class="city">${c.city}, ${c.country} — ${c.population.toLocaleString()}</div>`;
+  });
 
-    }
+  below.forEach(c => {
+    belowBox.innerHTML += `<div class="city">${c.city}, ${c.country} — ${c.population.toLocaleString()}</div>`;
+  });
 
+  // Trigger overtaking animations for cities that were passed
+  if (index > oldIndex) {
+    const passed = populationData.slice(oldIndex, index);
+    passed.forEach(city => showOvertake(city));
+  }
 }
 
+// Display a small pop-up when a city is overtaken
 function showOvertake(city) {
+  const el = document.createElement("div");
+  el.textContent = `Overtook ${city.city} (${city.population.toLocaleString()})`;
 
-    const el = document.createElement("div")
+  Object.assign(el.style, {
+    position: "fixed",
+    left: "50%",
+    top: "80px",
+    transform: "translateX(-50%)",
+    background: "#00ff88",
+    color: "#000",
+    padding: "10px 18px",
+    borderRadius: "20px",
+    fontWeight: "bold",
+    zIndex: 9999,
+  });
 
-    el.textContent = "Overtook " + city.city + " (" + city.population.toLocaleString() + ")"
+  document.body.appendChild(el);
 
-    el.style.position = "fixed"
-    el.style.left = "50%"
-    el.style.top = "80px"
-    el.style.transform = "translateX(-50%)"
-    el.style.background = "#00ff88"
-    el.style.color = "#000"
-    el.style.padding = "10px 18px"
-    el.style.borderRadius = "20px"
-    el.style.fontWeight = "bold"
-    el.style.zIndex = 9999
+  setTimeout(() => {
+    el.style.transition = "all 0.8s";
+    el.style.opacity = "0";
+    el.style.transform = "translate(-50%, -40px)";
+  }, 200);
 
-    document.body.appendChild(el)
-
-    setTimeout(() => {
-        el.style.transition = "all .8s"
-        el.style.opacity = "0"
-        el.style.transform = "translate(-50%,-40px)"
-    }, 200)
-
-    setTimeout(() => {
-        el.remove()
-    }, 1000)
-
+  setTimeout(() => el.remove(), 1000);
 }
 
+// Initialize MapLibre map
 function initMap() {
+  map = new maplibregl.Map({
+    container: "map",
+    style: "https://demotiles.maplibre.org/style.json",
+    center: [10, 20],
+    zoom: 1.4,
+  });
 
-    map = new maplibregl.Map({
-        container: "map",
-        style: "https://demotiles.maplibre.org/style.json",
-        center: [10, 20],
-        zoom: 1.4
-    })
-
-    map.on("load", () => {
-        updateMap()
-    })
-
+  map.on("load", () => updateMap());
 }
 
+// Update map points and coloring
 function updateMap() {
+  if (!map) return;
 
-    if (!map) return
+  const features = mapData.map(c => ({
+    type: "Feature",
+    properties: { smaller: c.population < followers },
+    geometry: { type: "Point", coordinates: [c.lng, c.lat] },
+  }));
 
-    const features = mapData.map(c => ({
+  const geo = { type: "FeatureCollection", features };
 
-        type: "Feature",
+  if (map.getSource("cities")) {
+    map.getSource("cities").setData(geo);
+    return;
+  }
 
-        properties: {
-            smaller: c.population < followers
-        },
-        geometry: {
-            type: "Point",
-            coordinates: [c.lng, c.lat]
-        }
-    })) const geo = {
-        type: "FeatureCollection",
-        features
-    }
-    if (map.getSource("cities")) {
-        map.getSource("cities").setData(geo) return
-    }
-    map.addSource("cities", {
-        type: "geojson",
-        data: geo,
-        cluster: true,
-        clusterRadius: 40
-    }) map.addLayer({
-        id: "clusters",
-        type: "circle",
-        source: "cities",
-        filter: ["has", "point_count"],
-        paint: {
-            "circle-radius": 18,
-            "circle-color": "#666"
-        }
-    }) map.addLayer({
-        id: "cluster-count",
-        type: "symbol",
-        source: "cities",
-        filter: ["has", "point_count"],
-        layout: {
-            "text-field": ["get", "point_count"],
-            "text-size": 12
-        }
-    }) map.addLayer({
-        id: "points",
-        type: "circle",
-        source: "cities",
-        filter: ["!has", "point_count"],
-        paint: {
-            "circle-radius": 5,
-            "circle-color": ["case", ["get", "smaller"], "#00ff88", "#888"]
-        }
-    })
+  map.addSource("cities", {
+    type: "geojson",
+    data: geo,
+    cluster: true,
+    clusterRadius: 40,
+  });
+
+  map.addLayer({
+    id: "clusters",
+    type: "circle",
+    source: "cities",
+    filter: ["has", "point_count"],
+    paint: { "circle-radius": 18, "circle-color": "#666" },
+  });
+
+  map.addLayer({
+    id: "cluster-count",
+    type: "symbol",
+    source: "cities",
+    filter: ["has", "point_count"],
+    layout: { "text-field": ["get", "point_count"], "text-size": 12 },
+  });
+
+  map.addLayer({
+    id: "points",
+    type: "circle",
+    source: "cities",
+    filter: ["!has", "point_count"],
+    paint: {
+      "circle-radius": 5,
+      "circle-color": ["case", ["get", "smaller"], "#00ff88", "#888"],
+    },
+  });
 }
 
+// Milliseconds to next GMT minute
 function msToNextMinute() {
-    const now = new Date() return (60 - now.getUTCSeconds()) * 1000 - now.getUTCMilliseconds()
+  const now = new Date();
+  return (60 - now.getUTCSeconds()) * 1000 - now.getUTCMilliseconds();
 }
 
+// Start countdown + scheduling
 function startClock() {
-    function timer() {
-        const now = new Date() const sec = now.getUTCSeconds() const remain = 60 - sec document.getElementById("countdown").textContent = "Next update in " + remain + "s"
-        document.getElementById("bar").style.width = (sec / 60 * 100) + "%"
-    }
-    setInterval(timer, 1000)
+  function updateTimer() {
+    const now = new Date();
+    const seconds = now.getUTCSeconds();
+    const remain = 60 - seconds;
+    document.getElementById("countdown").textContent = `Next update in ${remain}s`;
+    document.getElementById("bar").style.width = (seconds / 60) * 100 + "%";
+  }
 
-    function schedule() {
-        setTimeout(async () => {
+  setInterval(updateTimer, 1000);
 
-            await getFollowers()
+  function schedule() {
+    setTimeout(async () => {
+      await getFollowers();
+      schedule();
+    }, msToNextMinute());
+  }
 
-            schedule()
-
-        }, msToNextMinute())
-
-    }
-
-    schedule()
-
+  schedule();
 }
 
-loadData()
+// Load everything
+loadData();
