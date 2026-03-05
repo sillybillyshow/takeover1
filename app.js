@@ -22,12 +22,25 @@ async function loadData() {
   startClock();
 }
 
-// Fetch follower count from worker
+let mockLoadCount = 0;
+
 async function getFollowers() {
+  // Comment out the actual worker fetch
+  /*
   const res = await fetch(workerURL);
   const data = await res.json();
   previousFollowers = followers;
   followers = data.followers;
+  */
+
+  // Mock follower numbers for testing
+  previousFollowers = followers;
+  if (mockLoadCount === 0) {
+    followers = 4258; // initial load
+  } else {
+    followers = 4280; // second load to test increase
+  }
+  mockLoadCount++;
 }
 
 // Binary search to find rank index
