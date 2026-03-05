@@ -1,20 +1,16 @@
-// app.js
-
 const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev";
 
-let populationData = []; // full dataset for ranking
-let mapData = [];        // reduced dataset for map
+let populationData = [];
+let mapData = [];
 let followers = 0;
 let previousFollowers = 0;
 let map = null;
 
 async function loadData() {
-  // Load full population dataset
   const popRes = await fetch("populationdata.json");
   populationData = await popRes.json();
   populationData.sort((a, b) => a.population - b.population);
 
-  // Load reduced dataset for map
   const mapRes = await fetch("mapdata.json");
   mapData = await mapRes.json();
 
@@ -22,7 +18,6 @@ async function loadData() {
   startClock();
 }
 
-// Fetch followers from worker
 async function getFollowers() {
   const res = await fetch(workerURL);
   const data = await res.json();
@@ -35,7 +30,6 @@ async function getFollowers() {
   updateMap();
 }
 
-// Animate follower count smoothly
 function animateFollowerCount() {
   const el = document.getElementById("followers");
   const start = previousFollowers;
@@ -54,7 +48,6 @@ function animateFollowerCount() {
   requestAnimationFrame(step);
 }
 
-// Binary search to find rank index
 function findRank(value) {
   let low = 0;
   let high = populationData.length - 1;
@@ -67,7 +60,6 @@ function findRank(value) {
   return low;
 }
 
-// Update the rank lists and trigger overtaking notifications
 function updateRank() {
   const index = findRank(followers);
   const oldIndex = findRank(previousFollowers);
@@ -89,14 +81,12 @@ function updateRank() {
     belowBox.innerHTML += `<div class="city">${c.city}, ${c.country} — ${c.population.toLocaleString()}</div>`;
   });
 
-  // Trigger overtaking animations for cities that were passed
   if (index > oldIndex) {
     const passed = populationData.slice(oldIndex, index);
     passed.forEach(city => showOvertake(city));
   }
 }
 
-// Display a small pop-up when a city is overtaken
 function showOvertake(city) {
   const el = document.createElement("div");
   el.textContent = `Overtook ${city.city} (${city.population.toLocaleString()})`;
@@ -111,7 +101,7 @@ function showOvertake(city) {
     padding: "10px 18px",
     borderRadius: "20px",
     fontWeight: "bold",
-    zIndex: 9999,
+    zIndex: 9999
   });
 
   document.body.appendChild(el);
@@ -125,26 +115,24 @@ function showOvertake(city) {
   setTimeout(() => el.remove(), 1000);
 }
 
-// Initialize MapLibre map
 function initMap() {
   map = new maplibregl.Map({
     container: "map",
     style: "https://demotiles.maplibre.org/style.json",
     center: [10, 20],
-    zoom: 1.4,
+    zoom: 1.4
   });
 
   map.on("load", () => updateMap());
 }
 
-// Update map points and coloring
 function updateMap() {
   if (!map) return;
 
   const features = mapData.map(c => ({
     type: "Feature",
     properties: { smaller: c.population < followers },
-    geometry: { type: "Point", coordinates: [c.lng, c.lat] },
+    geometry: { type: "Point", coordinates: [c.lng, c.lat] }
   }));
 
   const geo = { type: "FeatureCollection", features };
@@ -158,7 +146,7 @@ function updateMap() {
     type: "geojson",
     data: geo,
     cluster: true,
-    clusterRadius: 40,
+    clusterRadius: 40
   });
 
   map.addLayer({
@@ -166,7 +154,7 @@ function updateMap() {
     type: "circle",
     source: "cities",
     filter: ["has", "point_count"],
-    paint: { "circle-radius": 18, "circle-color": "#666" },
+    paint: { "circle-radius": 18, "circle-color": "#666" }
   });
 
   map.addLayer({
@@ -174,7 +162,7 @@ function updateMap() {
     type: "symbol",
     source: "cities",
     filter: ["has", "point_count"],
-    layout: { "text-field": ["get", "point_count"], "text-size": 12 },
+    layout: { "text-field": ["get", "point_count"], "text-size": 12 }
   });
 
   map.addLayer({
@@ -184,18 +172,16 @@ function updateMap() {
     filter: ["!has", "point_count"],
     paint: {
       "circle-radius": 5,
-      "circle-color": ["case", ["get", "smaller"], "#00ff88", "#888"],
-    },
+      "circle-color": ["case", ["get", "smaller"], "#00ff88", "#888"]
+    }
   });
 }
 
-// Milliseconds to next GMT minute
 function msToNextMinute() {
   const now = new Date();
   return (60 - now.getUTCSeconds()) * 1000 - now.getUTCMilliseconds();
 }
 
-// Start countdown + scheduling
 function startClock() {
   function updateTimer() {
     const now = new Date();
@@ -217,5 +203,4 @@ function startClock() {
   schedule();
 }
 
-// Load everything
 loadData();
