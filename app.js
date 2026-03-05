@@ -138,43 +138,43 @@ function updateMap() {
   const geo = { type: "FeatureCollection", features };
 
   if (map.getSource("cities")) {
+    // Ensure the source is properly initialized before updating
     map.getSource("cities").setData(geo);
-    return;
+  } else {
+    map.addSource("cities", {
+      type: "geojson",
+      data: geo,
+      cluster: true,
+      clusterRadius: 40
+    });
+
+    map.addLayer({
+      id: "clusters",
+      type: "circle",
+      source: "cities",
+      filter: ["has", "point_count"],
+      paint: { "circle-radius": 18, "circle-color": "#666" }
+    });
+
+    map.addLayer({
+      id: "cluster-count",
+      type: "symbol",
+      source: "cities",
+      filter: ["has", "point_count"],
+      layout: { "text-field": ["get", "point_count"], "text-size": 12 }
+    });
+
+    map.addLayer({
+      id: "points",
+      type: "circle",
+      source: "cities",
+      filter: ["!has", "point_count"],
+      paint: {
+        "circle-radius": 5,
+        "circle-color": ["case", ["get", "smaller"], "#00ff88", "#888"]
+      }
+    });
   }
-
-  map.addSource("cities", {
-    type: "geojson",
-    data: geo,
-    cluster: true,
-    clusterRadius: 40
-  });
-
-  map.addLayer({
-    id: "clusters",
-    type: "circle",
-    source: "cities",
-    filter: ["has", "point_count"],
-    paint: { "circle-radius": 18, "circle-color": "#666" }
-  });
-
-  map.addLayer({
-    id: "cluster-count",
-    type: "symbol",
-    source: "cities",
-    filter: ["has", "point_count"],
-    layout: { "text-field": ["get", "point_count"], "text-size": 12 }
-  });
-
-  map.addLayer({
-    id: "points",
-    type: "circle",
-    source: "cities",
-    filter: ["!has", "point_count"],
-    paint: {
-      "circle-radius": 5,
-      "circle-color": ["case", ["get", "smaller"], "#00ff88", "#888"]
-    }
-  });
 }
 
 function msToNextMinute() {
