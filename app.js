@@ -13,16 +13,13 @@ const MAP_WIDTH = 900;
 const MAP_HEIGHT = 420;
 const MAP_MIN_SCALE = 1;
 const MAP_MAX_SCALE = 12;
-const mapState = {
-  scale: 1,
-  offsetX: 0,
-  offsetY: 0,
-  isDragging: false,
-  dragStartX: 0,
-  dragStartY: 0,
-  startOffsetX: 0,
-  startOffsetY: 0,
-};
+const WORLD_LAND_PATHS = [
+  "M48 100 L88 82 L134 80 L170 92 L210 112 L242 110 L280 120 L312 146 L326 172 L312 194 L286 194 L252 182 L218 184 L190 196 L154 192 L116 176 L86 156 L58 132 Z",
+  "M302 220 L330 210 L354 220 L362 246 L348 276 L356 300 L344 328 L320 338 L304 316 L306 282 L296 250 Z",
+  "M402 104 L432 92 L470 88 L508 94 L544 106 L582 122 L624 134 L660 156 L694 182 L712 204 L704 228 L672 226 L642 214 L614 214 L592 228 L574 254 L544 258 L524 244 L508 220 L482 212 L456 202 L432 184 L414 162 Z",
+  "M610 266 L646 278 L674 298 L682 330 L664 354 L628 348 L604 324 L596 294 Z",
+  "M724 284 L752 274 L788 286 L820 304 L838 332 L832 360 L806 370 L776 354 L748 330 L728 304 Z",
+];
 
 const cardsContainer = document.getElementById("cards-container");
 const countdownEl = document.getElementById("countdown");
@@ -72,10 +69,50 @@ async function loadData() {
   startClock();
 }
 
-// Mock follower fetch for testing
+function extractFollowerCount(data) {
+  const candidates = [
+    data?.followers,
+    data?.count,
+    data?.followerCount,
+    data?.data?.followers,
+    data?.data?.count,
+    data?.stats?.followers,
+    data?.user?.followers,
+  ];
+
+  for (const value of candidates) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  throw new Error("Unable to find follower count in worker response");
+}
+
 async function getFollowers() {
   previousFollowers = followers;
-  followers = previousFollowers === 0 ? 4258 : 4280;
+
+  try {
+    const response = await fetch(workerURL, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Follower request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    followers = extractFollowerCount(data);
+  } catch (error) {
+    console.error("Follower fetch failed", error);
+    if (followers === 0) {
+      followers = 4258;
+      previousFollowers = 4258;
+    }
+  }
 }
 
 function findRank(value) {
@@ -229,9 +266,10 @@ function setupSearch() {
       if (searchResults.hidden) {
         showSearchResults();
       }
-      if (!results.length) return;
+      const refreshedResults = Array.from(searchResults.querySelectorAll(".search-result"));
+      if (!refreshedResults.length) return;
       event.preventDefault();
-      selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, results.length - 1);
+      selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, refreshedResults.length - 1);
       updateSuggestionSelection();
     }
 
@@ -381,6 +419,21 @@ function setupMap() {
   requestAnimationFrame(resizeMapCanvas);
 }
 
+function drawWorldBackdrop(context) {
+  context.save();
+  context.fillStyle = "#e2e2e2";
+  context.strokeStyle = "#d2d2d2";
+  context.lineWidth = 1.1 / mapState.scale;
+
+  WORLD_LAND_PATHS.forEach((pathText) => {
+    const path = new Path2D(pathText);
+    context.fill(path);
+    context.stroke(path);
+  });
+
+  context.restore();
+}
+
 function renderMap() {
   const context = getMapContext();
   if (!context || !mapCanvas) return;
@@ -390,7 +443,7 @@ function renderMap() {
   if (!width || !height) return;
 
   context.clearRect(0, 0, width, height);
-  context.fillStyle = "#f4f4f4";
+  context.fillStyle = "#eef3f6";
   context.fillRect(0, 0, width, height);
 
   context.save();
@@ -416,9 +469,11 @@ function renderMap() {
     context.stroke();
   }
 
-  const pointRadius = Math.max(1.35, 2 / Math.sqrt(mapState.scale));
+  drawWorldBackdrop(context);
 
-  context.fillStyle = "rgba(159, 159, 159, 0.65)";
+  const pointRadius = Math.max(0.45, 0.9 / Math.sqrt(mapState.scale));
+
+  context.fillStyle = "rgba(159, 159, 159, 0.55)";
   projectedMapPoints.forEach((point) => {
     if (point.population < followers) return;
     context.beginPath();
@@ -426,7 +481,7 @@ function renderMap() {
     context.fill();
   });
 
-  context.fillStyle = "rgba(31, 157, 92, 0.9)";
+  context.fillStyle = "rgba(31, 157, 92, 0.82)";
   projectedMapPoints.forEach((point) => {
     if (point.population >= followers) return;
     context.beginPath();
