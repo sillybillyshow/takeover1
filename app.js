@@ -3,17 +3,24 @@ const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev";
 let populationData = [];
 let followers = 0;
 let previousFollowers = 0;
+let focusedLocation = null;
+let selectedSuggestionIndex = -1;
 
 const CONTEXT_ROWS = 5;
 const cardsContainer = document.getElementById("cards-container");
 const countdownEl = document.getElementById("countdown");
 const barEl = document.getElementById("bar");
+const searchInput = document.getElementById("location-search");
+const searchButton = document.getElementById("search-button");
+const resetButton = document.getElementById("reset-button");
+const searchResults = document.getElementById("search-results");
 
 async function loadData() {
   const popRes = await fetch("populationdata.json");
   populationData = await popRes.json();
   populationData.sort((a, b) => a.population - b.population);
 
+  setupSearch();
   await getFollowers();
   renderCards(true);
   startClock();
@@ -40,7 +47,18 @@ function findRank(value) {
 function createCityCard(city, position) {
   const card = document.createElement("div");
   card.className = `card ${position}-card`;
-  card.textContent = `${city.city}, ${city.country} — ${city.population.toLocaleString()}`;
+  card.dataset.locationKey = getLocationKey(city);
+
+  const name = document.createElement("span");
+  name.className = "card-label";
+  name.textContent = `${city.city}, ${city.country}`;
+
+  const population = document.createElement("span");
+  population.className = "card-value";
+  population.textContent = city.population.toLocaleString();
+
+  card.appendChild(name);
+  card.appendChild(population);
   return card;
 }
 
@@ -48,15 +66,38 @@ function createFollowerCard() {
   const followerCard = document.createElement("div");
   followerCard.className = "card follower";
   followerCard.id = "follower-card";
-  followerCard.textContent = `Silly Billy Show Followers — ${followers.toLocaleString()}`;
+  followerCard.dataset.locationKey = "followers";
+
+  const name = document.createElement("span");
+  name.className = "card-label";
+  name.textContent = "Silly Billy Show Followers";
+
+  const population = document.createElement("span");
+  population.className = "card-value";
+  population.textContent = followers.toLocaleString();
+
+  followerCard.appendChild(name);
+  followerCard.appendChild(population);
   return followerCard;
 }
 
-function scrollToFollower(behavior = "auto") {
-  const followerCard = document.getElementById("follower-card");
-  if (!followerCard) return;
+function getLocationKey(city) {
+  return `${city.city}, ${city.country}`;
+}
 
-  followerCard.scrollIntoView({
+function getFocusedElement() {
+  if (focusedLocation) {
+    return cardsContainer.querySelector(`[data-location-key="${CSS.escape(focusedLocation)}"]`);
+  }
+
+  return document.getElementById("follower-card");
+}
+
+function scrollToFocus(behavior = "auto") {
+  const focusedElement = getFocusedElement();
+  if (!focusedElement) return;
+
+  focusedElement.scrollIntoView({
     behavior,
     block: "center",
   });
@@ -73,7 +114,7 @@ function animateNoChange(followerCard) {
       { transform: "translateX(0px)" },
     ],
     {
-      duration: 360,
+      duration: 650,
       easing: "ease-out",
     }
   );
@@ -98,7 +139,7 @@ function animateRankShift(deltaIndex) {
       { transform: "translateY(0px) scale(1)", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" },
     ],
     {
-      duration: 900,
+      duration: 1450,
       easing: "cubic-bezier(0.22, 1, 0.36, 1)",
     }
   );
@@ -133,11 +174,119 @@ function animateRankShift(deltaIndex) {
         },
       ],
       {
-        duration: 950,
-        delay: Math.min(distance * 18, 140),
+        duration: 1550,
+        delay: Math.min(distance * 28, 240),
         easing: "cubic-bezier(0.22, 1, 0.36, 1)",
       }
     );
+  });
+}
+
+function getSearchMatches(query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+
+  return populationData
+    .filter((city) => getLocationKey(city).toLowerCase().includes(normalizedQuery))
+    .slice(0, 8);
+}
+
+function clearSearchResults() {
+  searchResults.innerHTML = "";
+  searchResults.hidden = true;
+  selectedSuggestionIndex = -1;
+}
+
+function renderSearchResults(matches) {
+  clearSearchResults();
+  if (!matches.length) return;
+
+  matches.forEach((city, index) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "search-result";
+    option.dataset.index = String(index);
+    option.textContent = getLocationKey(city);
+    option.addEventListener("click", () => {
+      searchInput.value = getLocationKey(city);
+      focusedLocation = getLocationKey(city);
+      clearSearchResults();
+      renderCards();
+    });
+    searchResults.appendChild(option);
+  });
+
+  searchResults.hidden = false;
+}
+
+function updateSuggestionSelection() {
+  const results = Array.from(searchResults.querySelectorAll(".search-result"));
+  results.forEach((result, index) => {
+    result.classList.toggle("active", index === selectedSuggestionIndex);
+  });
+}
+
+function submitSearch() {
+  const query = searchInput.value.trim();
+  if (!query) return;
+
+  const matches = getSearchMatches(query);
+  const activeMatch =
+    selectedSuggestionIndex >= 0
+      ? matches[selectedSuggestionIndex]
+      : matches.find((city) => getLocationKey(city).toLowerCase() === query.toLowerCase()) || matches[0];
+
+  if (!activeMatch) return;
+
+  focusedLocation = getLocationKey(activeMatch);
+  searchInput.value = focusedLocation;
+  clearSearchResults();
+  renderCards();
+}
+
+function setupSearch() {
+  if (!searchInput || !searchButton || !resetButton || !searchResults) return;
+
+  searchInput.addEventListener("input", () => {
+    selectedSuggestionIndex = -1;
+    renderSearchResults(getSearchMatches(searchInput.value));
+  });
+
+  searchInput.addEventListener("keydown", (event) => {
+    const results = Array.from(searchResults.querySelectorAll(".search-result"));
+    if (!results.length && event.key !== "Enter") return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, results.length - 1);
+      updateSuggestionSelection();
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, 0);
+      updateSuggestionSelection();
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitSearch();
+    }
+  });
+
+  searchButton.addEventListener("click", submitSearch);
+
+  resetButton.addEventListener("click", () => {
+    focusedLocation = null;
+    searchInput.value = "";
+    clearSearchResults();
+    renderCards();
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".search-panel")) {
+      clearSearchResults();
+    }
   });
 }
 
@@ -171,7 +320,12 @@ function renderCards(initial = false) {
     cardsContainer.appendChild(card);
   });
 
-  scrollToFollower(initial ? "auto" : "smooth");
+  const focusedElement = getFocusedElement();
+  if (focusedElement) {
+    focusedElement.classList.add("focused-card");
+  }
+
+  scrollToFocus(initial ? "auto" : "smooth");
 
   if (!initial) {
     const followerCard = document.getElementById("follower-card");
