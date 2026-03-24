@@ -7,7 +7,6 @@ let focusedLocation = null;
 let selectedSuggestionIndex = -1;
 let searchableLocations = [];
 
-const CONTEXT_ROWS = 5;
 const cardsContainer = document.getElementById("cards-container");
 const countdownEl = document.getElementById("countdown");
 const barEl = document.getElementById("bar");
@@ -15,6 +14,9 @@ const searchInput = document.getElementById("location-search");
 const searchButton = document.getElementById("search-button");
 const resetButton = document.getElementById("reset-button");
 const searchResults = document.getElementById("search-results");
+const nextPlaceEl = document.getElementById("next-place");
+const lastPlaceEl = document.getElementById("last-place");
+const mapEl = document.getElementById("world-map");
 
 async function loadData() {
   const popRes = await fetch("populationdata.json");
@@ -34,7 +36,10 @@ async function loadData() {
 
   setupSearch();
   await getFollowers();
-  renderCards(true);
+  renderView({
+    centerFocus: true,
+    preserveScroll: false,
+  });
   startClock();
 }
 
@@ -44,7 +49,6 @@ async function getFollowers() {
   followers = previousFollowers === 0 ? 4258 : 4280;
 }
 
-// Binary search to find rank index
 function findRank(value) {
   let low = 0;
   let high = populationData.length - 1;
@@ -56,9 +60,39 @@ function findRank(value) {
   return low;
 }
 
-function createCityCard(city, position, rank) {
+function getLocationKey(city) {
+  return `${city.city}, ${city.country}`;
+}
+
+function getFocusTarget() {
+  return focusedLocation || "followers";
+}
+
+function getFocusedElement() {
+  const key = getFocusTarget();
+  return cardsContainer.querySelector(`[data-location-key="${CSS.escape(key)}"]`);
+}
+
+function formatPlace(city) {
+  return `${city.city}, ${city.country} (${city.population.toLocaleString()})`;
+}
+
+function updateTakeoverSummary(index) {
+  const nextPlace = populationData[index] || null;
+  const lastPlace = populationData[index - 1] || null;
+
+  nextPlaceEl.textContent = nextPlace
+    ? `Next place to overtake: ${formatPlace(nextPlace)}`
+    : "Next place to overtake: None left";
+
+  lastPlaceEl.textContent = lastPlace
+    ? `Place just taken over: ${formatPlace(lastPlace)}`
+    : "Place just taken over: None yet";
+}
+
+function createCityCard(city, rank) {
   const card = document.createElement("div");
-  card.className = `card ${position}-card`;
+  card.className = "card";
   card.dataset.locationKey = getLocationKey(city);
 
   const rankLabel = document.createElement("span");
@@ -79,11 +113,14 @@ function createCityCard(city, position, rank) {
   return card;
 }
 
-function createFollowerCard() {
+function createFollowerCard(rank) {
   const followerCard = document.createElement("div");
   followerCard.className = "card follower";
-  followerCard.id = "follower-card";
   followerCard.dataset.locationKey = "followers";
+
+  const rankLabel = document.createElement("span");
+  rankLabel.className = "card-rank";
+  rankLabel.textContent = `${rank})`;
 
   const name = document.createElement("span");
   name.className = "card-label";
@@ -93,110 +130,10 @@ function createFollowerCard() {
   population.className = "card-value";
   population.textContent = followers.toLocaleString();
 
+  followerCard.appendChild(rankLabel);
   followerCard.appendChild(name);
   followerCard.appendChild(population);
   return followerCard;
-}
-
-function getLocationKey(city) {
-  return `${city.city}, ${city.country}`;
-}
-
-function getFocusedElement() {
-  if (focusedLocation) {
-    return cardsContainer.querySelector(`[data-location-key="${CSS.escape(focusedLocation)}"]`);
-  }
-
-  return document.getElementById("follower-card");
-}
-
-function scrollToFocus(behavior = "auto") {
-  const focusedElement = getFocusedElement();
-  if (!focusedElement) return;
-
-  focusedElement.scrollIntoView({
-    behavior,
-    block: "center",
-  });
-}
-
-function animateNoChange(followerCard) {
-  followerCard.animate(
-    [
-      { transform: "translateX(0px)" },
-      { transform: "translateX(-6px)" },
-      { transform: "translateX(5px)" },
-      { transform: "translateX(-4px)" },
-      { transform: "translateX(3px)" },
-      { transform: "translateX(0px)" },
-    ],
-    {
-      duration: 650,
-      easing: "ease-out",
-    }
-  );
-}
-
-function animateRankShift(deltaIndex) {
-  const followerCard = document.getElementById("follower-card");
-  if (!followerCard) return;
-
-  const direction = deltaIndex > 0 ? 1 : -1;
-  const shiftRows = Math.min(Math.abs(deltaIndex), CONTEXT_ROWS);
-  const backgroundShift = Math.max(36, shiftRows * 28) * direction;
-  const allCards = Array.from(cardsContainer.querySelectorAll(".card"));
-  const followerIndex = allCards.indexOf(followerCard);
-  const backgroundCards = allCards.filter((card) => card !== followerCard);
-
-  followerCard.animate(
-    [
-      { transform: "translateY(0px) scale(1)", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" },
-      { transform: "translateY(-24px) scale(1.02)", boxShadow: "0 18px 34px rgba(0,0,0,0.18)" },
-      { transform: "translateY(-20px) scale(1.02)", boxShadow: "0 16px 30px rgba(0,0,0,0.16)" },
-      { transform: "translateY(0px) scale(1)", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" },
-    ],
-    {
-      duration: 1450,
-      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-    }
-  );
-
-  backgroundCards.forEach((card) => {
-    const cardIndex = allCards.indexOf(card);
-    const distance = Math.abs(cardIndex - followerIndex);
-    const dampening = Math.max(0.35, 1 - distance * 0.08);
-    const offset = backgroundShift * dampening;
-
-    card.animate(
-      [
-        {
-          transform: "translateY(0px) scale(1)",
-          opacity: 1,
-          filter: "blur(0px)",
-        },
-        {
-          transform: `translateY(${offset}px) scale(0.985)`,
-          opacity: 0.72,
-          filter: "blur(1.5px)",
-        },
-        {
-          transform: `translateY(${offset * 0.35}px) scale(0.992)`,
-          opacity: 0.9,
-          filter: "blur(0.6px)",
-        },
-        {
-          transform: "translateY(0px) scale(1)",
-          opacity: 1,
-          filter: "blur(0px)",
-        },
-      ],
-      {
-        duration: 1550,
-        delay: Math.min(distance * 28, 240),
-        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-      }
-    );
-  });
 }
 
 function getSearchMatches(query) {
@@ -205,7 +142,6 @@ function getSearchMatches(query) {
 
   return searchableLocations
     .filter((entry) => entry.keyLower.includes(normalizedQuery))
-    .map((entry) => entry.city)
     .slice(0, 8);
 }
 
@@ -219,17 +155,20 @@ function renderSearchResults(matches) {
   clearSearchResults();
   if (!matches.length) return;
 
-  matches.forEach((city, index) => {
+  matches.forEach((entry, index) => {
     const option = document.createElement("button");
     option.type = "button";
     option.className = "search-result";
     option.dataset.index = String(index);
-    option.textContent = getLocationKey(city);
+    option.textContent = entry.key;
     option.addEventListener("click", () => {
-      searchInput.value = getLocationKey(city);
-      focusedLocation = getLocationKey(city);
+      searchInput.value = entry.key;
+      focusedLocation = entry.key;
       clearSearchResults();
-      renderCards();
+      renderView({
+        centerFocus: true,
+        preserveScroll: false,
+      });
     });
     searchResults.appendChild(option);
   });
@@ -249,22 +188,22 @@ function submitSearch() {
   if (!query) return;
 
   const matches = getSearchMatches(query);
+  renderSearchResults(matches);
+
   const activeMatch =
     selectedSuggestionIndex >= 0
       ? matches[selectedSuggestionIndex]
-      : matches.find((city) => getLocationKey(city).toLowerCase() === query.toLowerCase()) || null;
+      : matches.find((entry) => entry.keyLower === query.toLowerCase()) || matches[0] || null;
 
-  if (!activeMatch && matches.length === 1) {
-    focusedLocation = getLocationKey(matches[0]);
-  } else if (activeMatch) {
-    focusedLocation = getLocationKey(activeMatch);
-  } else {
-    return;
-  }
+  if (!activeMatch) return;
 
-  searchInput.value = focusedLocation;
+  focusedLocation = activeMatch.key;
+  searchInput.value = activeMatch.key;
   clearSearchResults();
-  renderCards();
+  renderView({
+    centerFocus: true,
+    preserveScroll: false,
+  });
 }
 
 function setupSearch() {
@@ -289,23 +228,20 @@ function setupSearch() {
 
     if (event.key === "Enter") {
       event.preventDefault();
-      selectedSuggestionIndex = -1;
-      renderSearchResults(getSearchMatches(searchInput.value));
       submitSearch();
     }
   });
 
-  searchButton.addEventListener("click", () => {
-    selectedSuggestionIndex = -1;
-    renderSearchResults(getSearchMatches(searchInput.value));
-    submitSearch();
-  });
+  searchButton.addEventListener("click", submitSearch);
 
   resetButton.addEventListener("click", () => {
     focusedLocation = null;
     searchInput.value = "";
     clearSearchResults();
-    renderCards();
+    renderView({
+      centerFocus: true,
+      preserveScroll: false,
+    });
   });
 
   document.addEventListener("click", (event) => {
@@ -315,39 +251,69 @@ function setupSearch() {
   });
 }
 
-// Render all cards and anchor the scroll around the follower row
-function renderCards(initial = false) {
+function renderMap() {
+  if (!mapEl) return;
+
+  const width = 900;
+  const height = 420;
+  const overtaken = [];
+  const remaining = [];
+
+  populationData.forEach((city) => {
+    const point = {
+      x: ((city.lng + 180) / 360) * width,
+      y: ((90 - city.lat) / 180) * height,
+    };
+
+    if (city.population < followers) overtaken.push(point);
+    else remaining.push(point);
+  });
+
+  const graticule = [];
+  for (let lng = -120; lng <= 120; lng += 60) {
+    const x = ((lng + 180) / 360) * width;
+    graticule.push(`<line x1="${x}" y1="0" x2="${x}" y2="${height}" />`);
+  }
+  for (let lat = -60; lat <= 60; lat += 30) {
+    const y = ((90 - lat) / 180) * height;
+    graticule.push(`<line x1="0" y1="${y}" x2="${width}" y2="${y}" />`);
+  }
+
+  const renderPoints = (points, className) =>
+    points
+      .map((point) => `<circle class="${className}" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="2.1"></circle>`)
+      .join("");
+
+  mapEl.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="World city takeover map">
+      <rect class="map-bg" x="0" y="0" width="${width}" height="${height}" rx="22"></rect>
+      <g class="map-grid">${graticule.join("")}</g>
+      <g class="map-points remaining">${renderPoints(remaining, "remaining-point")}</g>
+      <g class="map-points overtaken">${renderPoints(overtaken, "overtaken-point")}</g>
+    </svg>
+  `;
+}
+
+function renderCards(options = {}) {
+  const { centerFocus = false, preserveScroll = false } = options;
+  const currentScrollTop = preserveScroll ? cardsContainer.scrollTop : 0;
   const index = findRank(followers);
-  const oldIndex = findRank(previousFollowers);
-  const deltaIndex = index - oldIndex;
-  const totalLocations = populationData.length;
+  const higherPopulation = populationData.slice(index).reverse();
+  const lowerPopulation = populationData.slice(0, index).reverse();
+  const followerRank = higherPopulation.length + 1;
 
   cardsContainer.innerHTML = "";
 
-  const higherPopulation = populationData.slice(index).reverse();
-  const lowerPopulation = populationData.slice(0, index).reverse();
-
   higherPopulation.forEach((city, position) => {
-    const distanceFromFollower = higherPopulation.length - position;
     const rank = position + 1;
-    const card = createCityCard(
-      city,
-      distanceFromFollower <= CONTEXT_ROWS ? "top" : "higher",
-      rank
-    );
-    cardsContainer.appendChild(card);
+    cardsContainer.appendChild(createCityCard(city, rank));
   });
 
-  cardsContainer.appendChild(createFollowerCard());
+  cardsContainer.appendChild(createFollowerCard(followerRank));
 
   lowerPopulation.forEach((city, position) => {
-    const rank = totalLocations - index + position + 1;
-    const card = createCityCard(
-      city,
-      position < CONTEXT_ROWS ? "bottom" : "lower",
-      rank
-    );
-    cardsContainer.appendChild(card);
+    const rank = followerRank + position + 1;
+    cardsContainer.appendChild(createCityCard(city, rank));
   });
 
   const focusedElement = getFocusedElement();
@@ -355,27 +321,31 @@ function renderCards(initial = false) {
     focusedElement.classList.add("focused-card");
   }
 
-  scrollToFocus(initial ? "auto" : "smooth");
-
-  if (!initial) {
-    const followerCard = document.getElementById("follower-card");
-    if (!followerCard) return;
-
-    if (deltaIndex === 0) {
-      animateNoChange(followerCard);
-    } else {
-      animateRankShift(deltaIndex);
+  if (preserveScroll) {
+    cardsContainer.scrollTop = currentScrollTop;
+  } else if (centerFocus) {
+    const target = focusedElement || cardsContainer.querySelector('[data-location-key="followers"]');
+    if (target) {
+      target.scrollIntoView({
+        behavior: "auto",
+        block: "center",
+      });
     }
   }
+
+  updateTakeoverSummary(index);
+  renderMap();
 }
 
-// Milliseconds until next GMT minute
+function renderView(options = {}) {
+  renderCards(options);
+}
+
 function msToNextMinute() {
   const now = new Date();
   return (60 - now.getUTCSeconds()) * 1000 - now.getUTCMilliseconds();
 }
 
-// Countdown timer + scheduler
 function startClock() {
   function updateTimer() {
     const now = new Date();
@@ -384,18 +354,22 @@ function startClock() {
     countdownEl.textContent = `Next update in ${remain}s`;
     barEl.style.width = `${(seconds / 60) * 100}%`;
   }
+
   updateTimer();
   setInterval(updateTimer, 1000);
 
   function schedule() {
     setTimeout(async () => {
       await getFollowers();
-      renderCards();
+      renderView({
+        centerFocus: false,
+        preserveScroll: true,
+      });
       schedule();
     }, msToNextMinute());
   }
+
   schedule();
 }
 
-// Start
 loadData();
