@@ -5,6 +5,7 @@ let followers = 0;
 let previousFollowers = 0;
 let focusedLocation = null;
 let selectedSuggestionIndex = -1;
+let searchableLocations = [];
 
 const CONTEXT_ROWS = 5;
 const cardsContainer = document.getElementById("cards-container");
@@ -19,6 +20,17 @@ async function loadData() {
   const popRes = await fetch("populationdata.json");
   populationData = await popRes.json();
   populationData.sort((a, b) => a.population - b.population);
+  searchableLocations = populationData
+    .slice()
+    .reverse()
+    .map((city) => {
+      const key = getLocationKey(city);
+      return {
+        city,
+        key,
+        keyLower: key.toLowerCase(),
+      };
+    });
 
   setupSearch();
   await getFollowers();
@@ -44,10 +56,14 @@ function findRank(value) {
   return low;
 }
 
-function createCityCard(city, position) {
+function createCityCard(city, position, rank) {
   const card = document.createElement("div");
   card.className = `card ${position}-card`;
   card.dataset.locationKey = getLocationKey(city);
+
+  const rankLabel = document.createElement("span");
+  rankLabel.className = "card-rank";
+  rankLabel.textContent = `${rank})`;
 
   const name = document.createElement("span");
   name.className = "card-label";
@@ -57,6 +73,7 @@ function createCityCard(city, position) {
   population.className = "card-value";
   population.textContent = city.population.toLocaleString();
 
+  card.appendChild(rankLabel);
   card.appendChild(name);
   card.appendChild(population);
   return card;
@@ -186,8 +203,9 @@ function getSearchMatches(query) {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return [];
 
-  return populationData
-    .filter((city) => getLocationKey(city).toLowerCase().includes(normalizedQuery))
+  return searchableLocations
+    .filter((entry) => entry.keyLower.includes(normalizedQuery))
+    .map((entry) => entry.city)
     .slice(0, 8);
 }
 
@@ -234,11 +252,16 @@ function submitSearch() {
   const activeMatch =
     selectedSuggestionIndex >= 0
       ? matches[selectedSuggestionIndex]
-      : matches.find((city) => getLocationKey(city).toLowerCase() === query.toLowerCase()) || matches[0];
+      : matches.find((city) => getLocationKey(city).toLowerCase() === query.toLowerCase()) || null;
 
-  if (!activeMatch) return;
+  if (!activeMatch && matches.length === 1) {
+    focusedLocation = getLocationKey(matches[0]);
+  } else if (activeMatch) {
+    focusedLocation = getLocationKey(activeMatch);
+  } else {
+    return;
+  }
 
-  focusedLocation = getLocationKey(activeMatch);
   searchInput.value = focusedLocation;
   clearSearchResults();
   renderCards();
@@ -247,22 +270,18 @@ function submitSearch() {
 function setupSearch() {
   if (!searchInput || !searchButton || !resetButton || !searchResults) return;
 
-  searchInput.addEventListener("input", () => {
-    selectedSuggestionIndex = -1;
-    renderSearchResults(getSearchMatches(searchInput.value));
-  });
-
   searchInput.addEventListener("keydown", (event) => {
     const results = Array.from(searchResults.querySelectorAll(".search-result"));
-    if (!results.length && event.key !== "Enter") return;
 
     if (event.key === "ArrowDown") {
+      if (!results.length) return;
       event.preventDefault();
       selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, results.length - 1);
       updateSuggestionSelection();
     }
 
     if (event.key === "ArrowUp") {
+      if (!results.length) return;
       event.preventDefault();
       selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, 0);
       updateSuggestionSelection();
@@ -270,11 +289,17 @@ function setupSearch() {
 
     if (event.key === "Enter") {
       event.preventDefault();
+      selectedSuggestionIndex = -1;
+      renderSearchResults(getSearchMatches(searchInput.value));
       submitSearch();
     }
   });
 
-  searchButton.addEventListener("click", submitSearch);
+  searchButton.addEventListener("click", () => {
+    selectedSuggestionIndex = -1;
+    renderSearchResults(getSearchMatches(searchInput.value));
+    submitSearch();
+  });
 
   resetButton.addEventListener("click", () => {
     focusedLocation = null;
@@ -295,6 +320,7 @@ function renderCards(initial = false) {
   const index = findRank(followers);
   const oldIndex = findRank(previousFollowers);
   const deltaIndex = index - oldIndex;
+  const totalLocations = populationData.length;
 
   cardsContainer.innerHTML = "";
 
@@ -303,9 +329,11 @@ function renderCards(initial = false) {
 
   higherPopulation.forEach((city, position) => {
     const distanceFromFollower = higherPopulation.length - position;
+    const rank = position + 1;
     const card = createCityCard(
       city,
-      distanceFromFollower <= CONTEXT_ROWS ? "top" : "higher"
+      distanceFromFollower <= CONTEXT_ROWS ? "top" : "higher",
+      rank
     );
     cardsContainer.appendChild(card);
   });
@@ -313,9 +341,11 @@ function renderCards(initial = false) {
   cardsContainer.appendChild(createFollowerCard());
 
   lowerPopulation.forEach((city, position) => {
+    const rank = totalLocations - index + position + 1;
     const card = createCityCard(
       city,
-      position < CONTEXT_ROWS ? "bottom" : "lower"
+      position < CONTEXT_ROWS ? "bottom" : "lower",
+      rank
     );
     cardsContainer.appendChild(card);
   });
