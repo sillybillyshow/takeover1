@@ -69,25 +69,6 @@ async function loadData() {
   startClock();
 }
 
-function extractFollowerCount(data) {
-  const candidates = [
-    data?.followers,
-    data?.count,
-    data?.followerCount,
-    data?.data?.followers,
-    data?.data?.count,
-    data?.stats?.followers,
-    data?.user?.followers,
-  ];
-
-  for (const value of candidates) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-
-  throw new Error("Unable to find follower count in worker response");
-}
-
 async function getFollowers() {
   previousFollowers = followers;
 
@@ -105,7 +86,10 @@ async function getFollowers() {
     }
 
     const data = await response.json();
-    followers = extractFollowerCount(data);
+    followers = Number(data.followers);
+    if (!Number.isFinite(followers)) {
+      throw new Error("Worker response did not include a numeric followers value");
+    }
   } catch (error) {
     console.error("Follower fetch failed", error);
     if (followers === 0) {
