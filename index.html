@@ -26,7 +26,8 @@
   .summary-panel,
   .search-panel,
   .cards-wrap,
-  .map-panel {
+  .map-panel,
+  .page-footer {
     width: 100%;
     max-width: 760px;
   }
@@ -57,15 +58,41 @@
   }
 
   .summary-panel {
+    margin-bottom: 16px;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .summary-card {
     background: #fff;
     border-radius: 14px;
     padding: 16px 18px;
     box-shadow: 0 4px 18px rgba(0,0,0,0.06);
-    margin-bottom: 16px;
   }
 
-  .summary-item + .summary-item {
-    margin-top: 8px;
+  .summary-heading {
+    display: block;
+    font-size: 0.88rem;
+    color: #777;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .summary-name {
+    display: block;
+    font-size: 1rem;
+    margin-bottom: 4px;
+  }
+
+  .summary-value {
+    display: block;
+    font-weight: bold;
+    color: #ff0050;
   }
 
   .search-panel {
@@ -146,7 +173,6 @@
     padding: 14px 18px 10px;
     font-size: 0.88rem;
     color: #666;
-    border-bottom: 1px solid #efefef;
   }
 
   .cards-container {
@@ -208,16 +234,6 @@
     color: #fff;
   }
 
-  .attribution {
-    padding: 0 18px 16px;
-    font-size: 0.9rem;
-    color: #666;
-  }
-
-  .attribution a {
-    color: #666;
-  }
-
   .map-panel {
     margin-top: 16px;
     background: #fff;
@@ -255,10 +271,12 @@
     border-radius: 18px;
     overflow: hidden;
     background: #f4f4f4;
+    min-height: 220px;
   }
 
   #world-map {
     width: 100%;
+    height: auto;
     aspect-ratio: 900 / 420;
     display: block;
     touch-action: none;
@@ -269,7 +287,23 @@
     cursor: grabbing;
   }
 
+  .page-footer {
+    margin-top: 16px;
+    padding-bottom: 12px;
+    text-align: center;
+    color: #666;
+    font-size: 0.92rem;
+  }
+
+  .page-footer a {
+    color: #666;
+  }
+
   @media (max-width: 640px) {
+    .summary-grid {
+      grid-template-columns: 1fr;
+    }
+
     .search-row {
       flex-wrap: wrap;
     }
@@ -306,8 +340,18 @@
 </div>
 
 <section class="summary-panel">
-  <div class="summary-item" id="next-place">Next place to overtake:</div>
-  <div class="summary-item" id="last-place">Place just taken over:</div>
+  <div class="summary-grid">
+    <article class="summary-card">
+      <span class="summary-heading">Next Place To Overtake</span>
+      <span class="summary-name" id="next-place-name">Loading...</span>
+      <span class="summary-value" id="next-place-value"></span>
+    </article>
+    <article class="summary-card">
+      <span class="summary-heading">Place Just Taken Over</span>
+      <span class="summary-name" id="last-place-name">Loading...</span>
+      <span class="summary-value" id="last-place-value"></span>
+    </article>
+  </div>
 </section>
 
 <div class="search-panel">
@@ -328,11 +372,6 @@
   <div class="cards-container" id="cards-container">
     <!-- Cards will be injected here -->
   </div>
-
-  <div class="attribution">
-    Data source:
-    <a href="https://simplemaps.com/data/world-cities" target="_blank" rel="noreferrer">Simplemaps World Cities Database</a>
-  </div>
 </section>
 
 <section class="map-panel">
@@ -345,6 +384,11 @@
     <canvas id="world-map"></canvas>
   </div>
 </section>
+
+<footer class="page-footer">
+  Data source:
+  <a href="https://simplemaps.com/data/world-cities" target="_blank" rel="noreferrer">Simplemaps World Cities Database</a>
+</footer>
 
 <script src="app.js"></script>
 </body>
