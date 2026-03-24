@@ -6,6 +6,23 @@ let previousFollowers = 0;
 let focusedLocation = null;
 let selectedSuggestionIndex = -1;
 let searchableLocations = [];
+let projectedMapPoints = [];
+let mapNeedsRender = false;
+
+const MAP_WIDTH = 900;
+const MAP_HEIGHT = 420;
+const MAP_MIN_SCALE = 1;
+const MAP_MAX_SCALE = 12;
+const mapState = {
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  isDragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+  startOffsetX: 0,
+  startOffsetY: 0,
+};
 
 const cardsContainer = document.getElementById("cards-container");
 const countdownEl = document.getElementById("countdown");
@@ -16,12 +33,14 @@ const resetButton = document.getElementById("reset-button");
 const searchResults = document.getElementById("search-results");
 const nextPlaceEl = document.getElementById("next-place");
 const lastPlaceEl = document.getElementById("last-place");
-const mapEl = document.getElementById("world-map");
+const mapCanvas = document.getElementById("world-map");
+const mapResetButton = document.getElementById("map-reset");
 
 async function loadData() {
   const popRes = await fetch("populationdata.json");
   populationData = await popRes.json();
   populationData.sort((a, b) => a.population - b.population);
+
   searchableLocations = populationData
     .slice()
     .reverse()
@@ -34,7 +53,14 @@ async function loadData() {
       };
     });
 
+  projectedMapPoints = populationData.map((city) => ({
+    x: ((city.lng + 180) / 360) * MAP_WIDTH,
+    y: ((90 - city.lat) / 180) * MAP_HEIGHT,
+    population: city.population,
+  }));
+
   setupSearch();
+  setupMap();
   await getFollowers();
   renderView({
     centerFocus: true,
@@ -251,47 +277,167 @@ function setupSearch() {
   });
 }
 
-function renderMap() {
-  if (!mapEl) return;
+function getMapContext() {
+  if (!mapCanvas) return null;
+  const context = mapCanvas.getContext("2d");
+  if (!context) return null;
+  return context;
+}
 
-  const width = 900;
-  const height = 420;
-  const overtaken = [];
-  const remaining = [];
+function clampMapOffsets() {
+  const scaledWidth = MAP_WIDTH * mapState.scale;
+  const scaledHeight = MAP_HEIGHT * mapState.scale;
+  const viewportWidth = mapCanvas.clientWidth || MAP_WIDTH;
+  const viewportHeight = mapCanvas.clientHeight || MAP_HEIGHT;
+  const minOffsetX = Math.min(0, viewportWidth - scaledWidth);
+  const minOffsetY = Math.min(0, viewportHeight - scaledHeight);
 
-  populationData.forEach((city) => {
-    const point = {
-      x: ((city.lng + 180) / 360) * width,
-      y: ((90 - city.lat) / 180) * height,
-    };
+  mapState.offsetX = Math.min(0, Math.max(minOffsetX, mapState.offsetX));
+  mapState.offsetY = Math.min(0, Math.max(minOffsetY, mapState.offsetY));
+}
 
-    if (city.population < followers) overtaken.push(point);
-    else remaining.push(point);
+function requestMapRender() {
+  if (mapNeedsRender) return;
+  mapNeedsRender = true;
+  requestAnimationFrame(() => {
+    mapNeedsRender = false;
+    renderMap();
+  });
+}
+
+function resetMapView() {
+  mapState.scale = 1;
+  mapState.offsetX = 0;
+  mapState.offsetY = 0;
+  requestMapRender();
+}
+
+function resizeMapCanvas() {
+  if (!mapCanvas) return;
+  const ratio = window.devicePixelRatio || 1;
+  const displayWidth = mapCanvas.clientWidth || mapCanvas.parentElement.clientWidth || MAP_WIDTH;
+  const displayHeight = (displayWidth / MAP_WIDTH) * MAP_HEIGHT;
+
+  mapCanvas.width = Math.round(displayWidth * ratio);
+  mapCanvas.height = Math.round(displayHeight * ratio);
+  mapCanvas.style.height = `${displayHeight}px`;
+
+  const context = getMapContext();
+  if (context) {
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+
+  clampMapOffsets();
+  requestMapRender();
+}
+
+function setupMap() {
+  if (!mapCanvas) return;
+
+  mapResetButton?.addEventListener("click", resetMapView);
+
+  mapCanvas.addEventListener("wheel", (event) => {
+    event.preventDefault();
+
+    const rect = mapCanvas.getBoundingClientRect();
+    const cursorX = event.clientX - rect.left;
+    const cursorY = event.clientY - rect.top;
+    const worldX = (cursorX - mapState.offsetX) / mapState.scale;
+    const worldY = (cursorY - mapState.offsetY) / mapState.scale;
+    const zoomFactor = event.deltaY < 0 ? 1.15 : 0.87;
+    const nextScale = Math.min(MAP_MAX_SCALE, Math.max(MAP_MIN_SCALE, mapState.scale * zoomFactor));
+
+    mapState.scale = nextScale;
+    mapState.offsetX = cursorX - worldX * mapState.scale;
+    mapState.offsetY = cursorY - worldY * mapState.scale;
+    clampMapOffsets();
+    requestMapRender();
+  }, { passive: false });
+
+  mapCanvas.addEventListener("pointerdown", (event) => {
+    mapState.isDragging = true;
+    mapState.dragStartX = event.clientX;
+    mapState.dragStartY = event.clientY;
+    mapState.startOffsetX = mapState.offsetX;
+    mapState.startOffsetY = mapState.offsetY;
+    mapCanvas.setPointerCapture(event.pointerId);
   });
 
-  const graticule = [];
+  mapCanvas.addEventListener("pointermove", (event) => {
+    if (!mapState.isDragging) return;
+    mapState.offsetX = mapState.startOffsetX + (event.clientX - mapState.dragStartX);
+    mapState.offsetY = mapState.startOffsetY + (event.clientY - mapState.dragStartY);
+    clampMapOffsets();
+    requestMapRender();
+  });
+
+  const stopDrag = (event) => {
+    if (!mapState.isDragging) return;
+    mapState.isDragging = false;
+    if (event && mapCanvas.hasPointerCapture(event.pointerId)) {
+      mapCanvas.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  mapCanvas.addEventListener("pointerup", stopDrag);
+  mapCanvas.addEventListener("pointerleave", stopDrag);
+  mapCanvas.addEventListener("pointercancel", stopDrag);
+  window.addEventListener("resize", resizeMapCanvas);
+
+  resizeMapCanvas();
+}
+
+function renderMap() {
+  const context = getMapContext();
+  if (!context || !mapCanvas) return;
+
+  const width = mapCanvas.clientWidth;
+  const height = mapCanvas.clientHeight;
+
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#f4f4f4";
+  context.fillRect(0, 0, width, height);
+
+  context.save();
+  context.translate(mapState.offsetX, mapState.offsetY);
+  context.scale(mapState.scale, mapState.scale);
+
+  context.strokeStyle = "#d8d8d8";
+  context.lineWidth = 1 / mapState.scale;
   for (let lng = -120; lng <= 120; lng += 60) {
-    const x = ((lng + 180) / 360) * width;
-    graticule.push(`<line x1="${x}" y1="0" x2="${x}" y2="${height}" />`);
+    const x = ((lng + 180) / 360) * MAP_WIDTH;
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, MAP_HEIGHT);
+    context.stroke();
   }
   for (let lat = -60; lat <= 60; lat += 30) {
-    const y = ((90 - lat) / 180) * height;
-    graticule.push(`<line x1="0" y1="${y}" x2="${width}" y2="${y}" />`);
+    const y = ((90 - lat) / 180) * MAP_HEIGHT;
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(MAP_WIDTH, y);
+    context.stroke();
   }
 
-  const renderPoints = (points, className) =>
-    points
-      .map((point) => `<circle class="${className}" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="2.1"></circle>`)
-      .join("");
+  const pointRadius = Math.max(1.35, 2 / Math.sqrt(mapState.scale));
 
-  mapEl.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="World city takeover map">
-      <rect class="map-bg" x="0" y="0" width="${width}" height="${height}" rx="22"></rect>
-      <g class="map-grid">${graticule.join("")}</g>
-      <g class="map-points remaining">${renderPoints(remaining, "remaining-point")}</g>
-      <g class="map-points overtaken">${renderPoints(overtaken, "overtaken-point")}</g>
-    </svg>
-  `;
+  context.fillStyle = "rgba(159, 159, 159, 0.65)";
+  projectedMapPoints.forEach((point) => {
+    if (point.population <= followers) return;
+    context.beginPath();
+    context.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
+    context.fill();
+  });
+
+  context.fillStyle = "rgba(31, 157, 92, 0.9)";
+  projectedMapPoints.forEach((point) => {
+    if (point.population > followers) return;
+    context.beginPath();
+    context.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
+    context.fill();
+  });
+
+  context.restore();
 }
 
 function renderCards(options = {}) {
@@ -305,15 +451,13 @@ function renderCards(options = {}) {
   cardsContainer.innerHTML = "";
 
   higherPopulation.forEach((city, position) => {
-    const rank = position + 1;
-    cardsContainer.appendChild(createCityCard(city, rank));
+    cardsContainer.appendChild(createCityCard(city, position + 1));
   });
 
   cardsContainer.appendChild(createFollowerCard(followerRank));
 
   lowerPopulation.forEach((city, position) => {
-    const rank = followerRank + position + 1;
-    cardsContainer.appendChild(createCityCard(city, rank));
+    cardsContainer.appendChild(createCityCard(city, followerRank + position + 1));
   });
 
   const focusedElement = getFocusedElement();
@@ -334,7 +478,7 @@ function renderCards(options = {}) {
   }
 
   updateTakeoverSummary(index);
-  renderMap();
+  requestMapRender();
 }
 
 function renderView(options = {}) {
