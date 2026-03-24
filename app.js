@@ -31,8 +31,10 @@ const searchInput = document.getElementById("location-search");
 const searchButton = document.getElementById("search-button");
 const resetButton = document.getElementById("reset-button");
 const searchResults = document.getElementById("search-results");
-const nextPlaceEl = document.getElementById("next-place");
-const lastPlaceEl = document.getElementById("last-place");
+const nextPlaceNameEl = document.getElementById("next-place-name");
+const nextPlaceValueEl = document.getElementById("next-place-value");
+const lastPlaceNameEl = document.getElementById("last-place-name");
+const lastPlaceValueEl = document.getElementById("last-place-value");
 const mapCanvas = document.getElementById("world-map");
 const mapResetButton = document.getElementById("map-reset");
 
@@ -65,6 +67,7 @@ async function loadData() {
   renderView({
     centerFocus: true,
     preserveScroll: false,
+    followAccountIfVisible: false,
   });
   startClock();
 }
@@ -99,21 +102,23 @@ function getFocusedElement() {
   return cardsContainer.querySelector(`[data-location-key="${CSS.escape(key)}"]`);
 }
 
-function formatPlace(city) {
-  return `${city.city}, ${city.country} (${city.population.toLocaleString()})`;
+function formatPlaceName(city) {
+  return `${city.city}, ${city.country}`;
+}
+
+function formatPlaceValue(city) {
+  return city.population.toLocaleString();
 }
 
 function updateTakeoverSummary(index) {
   const nextPlace = populationData[index] || null;
   const lastPlace = populationData[index - 1] || null;
 
-  nextPlaceEl.textContent = nextPlace
-    ? `Next place to overtake: ${formatPlace(nextPlace)}`
-    : "Next place to overtake: None left";
+  nextPlaceNameEl.textContent = nextPlace ? formatPlaceName(nextPlace) : "None left";
+  nextPlaceValueEl.textContent = nextPlace ? formatPlaceValue(nextPlace) : "";
 
-  lastPlaceEl.textContent = lastPlace
-    ? `Place just taken over: ${formatPlace(lastPlace)}`
-    : "Place just taken over: None yet";
+  lastPlaceNameEl.textContent = lastPlace ? formatPlaceName(lastPlace) : "None yet";
+  lastPlaceValueEl.textContent = lastPlace ? formatPlaceValue(lastPlace) : "";
 }
 
 function createCityCard(city, rank) {
@@ -127,11 +132,11 @@ function createCityCard(city, rank) {
 
   const name = document.createElement("span");
   name.className = "card-label";
-  name.textContent = `${city.city}, ${city.country}`;
+  name.textContent = formatPlaceName(city);
 
   const population = document.createElement("span");
   population.className = "card-value";
-  population.textContent = city.population.toLocaleString();
+  population.textContent = formatPlaceValue(city);
 
   card.appendChild(rankLabel);
   card.appendChild(name);
@@ -194,6 +199,7 @@ function renderSearchResults(matches) {
       renderView({
         centerFocus: true,
         preserveScroll: false,
+        followAccountIfVisible: false,
       });
     });
     searchResults.appendChild(option);
@@ -209,27 +215,8 @@ function updateSuggestionSelection() {
   });
 }
 
-function submitSearch() {
-  const query = searchInput.value.trim();
-  if (!query) return;
-
-  const matches = getSearchMatches(query);
-  renderSearchResults(matches);
-
-  const activeMatch =
-    selectedSuggestionIndex >= 0
-      ? matches[selectedSuggestionIndex]
-      : matches.find((entry) => entry.keyLower === query.toLowerCase()) || matches[0] || null;
-
-  if (!activeMatch) return;
-
-  focusedLocation = activeMatch.key;
-  searchInput.value = activeMatch.key;
-  clearSearchResults();
-  renderView({
-    centerFocus: true,
-    preserveScroll: false,
-  });
+function showSearchResults() {
+  renderSearchResults(getSearchMatches(searchInput.value));
 }
 
 function setupSearch() {
@@ -239,6 +226,9 @@ function setupSearch() {
     const results = Array.from(searchResults.querySelectorAll(".search-result"));
 
     if (event.key === "ArrowDown") {
+      if (searchResults.hidden) {
+        showSearchResults();
+      }
       if (!results.length) return;
       event.preventDefault();
       selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, results.length - 1);
@@ -254,11 +244,11 @@ function setupSearch() {
 
     if (event.key === "Enter") {
       event.preventDefault();
-      submitSearch();
+      showSearchResults();
     }
   });
 
-  searchButton.addEventListener("click", submitSearch);
+  searchButton.addEventListener("click", showSearchResults);
 
   resetButton.addEventListener("click", () => {
     focusedLocation = null;
@@ -267,6 +257,7 @@ function setupSearch() {
     renderView({
       centerFocus: true,
       preserveScroll: false,
+      followAccountIfVisible: false,
     });
   });
 
@@ -279,9 +270,7 @@ function setupSearch() {
 
 function getMapContext() {
   if (!mapCanvas) return null;
-  const context = mapCanvas.getContext("2d");
-  if (!context) return null;
-  return context;
+  return mapCanvas.getContext("2d");
 }
 
 function clampMapOffsets() {
@@ -314,6 +303,7 @@ function resetMapView() {
 
 function resizeMapCanvas() {
   if (!mapCanvas) return;
+
   const ratio = window.devicePixelRatio || 1;
   const displayWidth = mapCanvas.clientWidth || mapCanvas.parentElement.clientWidth || MAP_WIDTH;
   const displayHeight = (displayWidth / MAP_WIDTH) * MAP_HEIGHT;
@@ -336,23 +326,27 @@ function setupMap() {
 
   mapResetButton?.addEventListener("click", resetMapView);
 
-  mapCanvas.addEventListener("wheel", (event) => {
-    event.preventDefault();
+  mapCanvas.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
 
-    const rect = mapCanvas.getBoundingClientRect();
-    const cursorX = event.clientX - rect.left;
-    const cursorY = event.clientY - rect.top;
-    const worldX = (cursorX - mapState.offsetX) / mapState.scale;
-    const worldY = (cursorY - mapState.offsetY) / mapState.scale;
-    const zoomFactor = event.deltaY < 0 ? 1.15 : 0.87;
-    const nextScale = Math.min(MAP_MAX_SCALE, Math.max(MAP_MIN_SCALE, mapState.scale * zoomFactor));
+      const rect = mapCanvas.getBoundingClientRect();
+      const cursorX = event.clientX - rect.left;
+      const cursorY = event.clientY - rect.top;
+      const worldX = (cursorX - mapState.offsetX) / mapState.scale;
+      const worldY = (cursorY - mapState.offsetY) / mapState.scale;
+      const zoomFactor = event.deltaY < 0 ? 1.15 : 0.87;
+      const nextScale = Math.min(MAP_MAX_SCALE, Math.max(MAP_MIN_SCALE, mapState.scale * zoomFactor));
 
-    mapState.scale = nextScale;
-    mapState.offsetX = cursorX - worldX * mapState.scale;
-    mapState.offsetY = cursorY - worldY * mapState.scale;
-    clampMapOffsets();
-    requestMapRender();
-  }, { passive: false });
+      mapState.scale = nextScale;
+      mapState.offsetX = cursorX - worldX * mapState.scale;
+      mapState.offsetY = cursorY - worldY * mapState.scale;
+      clampMapOffsets();
+      requestMapRender();
+    },
+    { passive: false }
+  );
 
   mapCanvas.addEventListener("pointerdown", (event) => {
     mapState.isDragging = true;
@@ -384,7 +378,7 @@ function setupMap() {
   mapCanvas.addEventListener("pointercancel", stopDrag);
   window.addEventListener("resize", resizeMapCanvas);
 
-  resizeMapCanvas();
+  requestAnimationFrame(resizeMapCanvas);
 }
 
 function renderMap() {
@@ -393,6 +387,7 @@ function renderMap() {
 
   const width = mapCanvas.clientWidth;
   const height = mapCanvas.clientHeight;
+  if (!width || !height) return;
 
   context.clearRect(0, 0, width, height);
   context.fillStyle = "#f4f4f4";
@@ -404,6 +399,7 @@ function renderMap() {
 
   context.strokeStyle = "#d8d8d8";
   context.lineWidth = 1 / mapState.scale;
+
   for (let lng = -120; lng <= 120; lng += 60) {
     const x = ((lng + 180) / 360) * MAP_WIDTH;
     context.beginPath();
@@ -411,6 +407,7 @@ function renderMap() {
     context.lineTo(x, MAP_HEIGHT);
     context.stroke();
   }
+
   for (let lat = -60; lat <= 60; lat += 30) {
     const y = ((90 - lat) / 180) * MAP_HEIGHT;
     context.beginPath();
@@ -423,7 +420,7 @@ function renderMap() {
 
   context.fillStyle = "rgba(159, 159, 159, 0.65)";
   projectedMapPoints.forEach((point) => {
-    if (point.population <= followers) return;
+    if (point.population < followers) return;
     context.beginPath();
     context.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
     context.fill();
@@ -431,7 +428,7 @@ function renderMap() {
 
   context.fillStyle = "rgba(31, 157, 92, 0.9)";
   projectedMapPoints.forEach((point) => {
-    if (point.population > followers) return;
+    if (point.population >= followers) return;
     context.beginPath();
     context.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
     context.fill();
@@ -440,9 +437,26 @@ function renderMap() {
   context.restore();
 }
 
+function isAccountVisible() {
+  const followerCard = cardsContainer.querySelector('[data-location-key="followers"]');
+  if (!followerCard) return false;
+
+  const containerTop = cardsContainer.scrollTop;
+  const containerBottom = containerTop + cardsContainer.clientHeight;
+  const cardTop = followerCard.offsetTop;
+  const cardBottom = cardTop + followerCard.offsetHeight;
+
+  return cardBottom >= containerTop && cardTop <= containerBottom;
+}
+
 function renderCards(options = {}) {
-  const { centerFocus = false, preserveScroll = false } = options;
+  const {
+    centerFocus = false,
+    preserveScroll = false,
+    followAccountIfVisible = false,
+  } = options;
   const currentScrollTop = preserveScroll ? cardsContainer.scrollTop : 0;
+  const accountWasVisible = followAccountIfVisible ? isAccountVisible() : false;
   const index = findRank(followers);
   const higherPopulation = populationData.slice(index).reverse();
   const lowerPopulation = populationData.slice(0, index).reverse();
@@ -467,7 +481,17 @@ function renderCards(options = {}) {
 
   if (preserveScroll) {
     cardsContainer.scrollTop = currentScrollTop;
-  } else if (centerFocus) {
+  }
+
+  if (accountWasVisible) {
+    const followerCard = cardsContainer.querySelector('[data-location-key="followers"]');
+    if (followerCard) {
+      followerCard.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  } else if (!preserveScroll && centerFocus) {
     const target = focusedElement || cardsContainer.querySelector('[data-location-key="followers"]');
     if (target) {
       target.scrollIntoView({
@@ -508,6 +532,7 @@ function startClock() {
       renderView({
         centerFocus: false,
         preserveScroll: true,
+        followAccountIfVisible: true,
       });
       schedule();
     }, msToNextMinute());
