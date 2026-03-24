@@ -1,11 +1,10 @@
-// app.js
 const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev";
 
 let populationData = [];
 let followers = 0;
 let previousFollowers = 0;
 
-const CARD_COUNT = 5;
+const CONTEXT_ROWS = 5;
 const cardsContainer = document.getElementById("cards-container");
 const countdownEl = document.getElementById("countdown");
 const barEl = document.getElementById("bar");
@@ -13,7 +12,7 @@ const barEl = document.getElementById("bar");
 async function loadData() {
   const popRes = await fetch("populationdata.json");
   populationData = await popRes.json();
-  populationData.sort((a,b) => a.population - b.population);
+  populationData.sort((a, b) => a.population - b.population);
 
   await getFollowers();
   renderCards(true);
@@ -28,109 +27,95 @@ async function getFollowers() {
 
 // Binary search to find rank index
 function findRank(value) {
-  let low = 0, high = populationData.length - 1;
+  let low = 0;
+  let high = populationData.length - 1;
   while (low <= high) {
-    const mid = Math.floor((low + high)/2);
+    const mid = Math.floor((low + high) / 2);
     if (populationData[mid].population < value) low = mid + 1;
-    else high = mid -1;
+    else high = mid - 1;
   }
   return low;
 }
 
-// Render cards snapshot
-function renderCards(initial=false) {
+function createCityCard(city, position) {
+  const card = document.createElement("div");
+  card.className = `card ${position}-card`;
+  card.textContent = `${city.city}, ${city.country} — ${city.population.toLocaleString()}`;
+  return card;
+}
+
+function createFollowerCard() {
+  const followerCard = document.createElement("div");
+  followerCard.className = "card follower";
+  followerCard.id = "follower-card";
+  followerCard.textContent = `Silly Billy Show Followers — ${followers.toLocaleString()}`;
+  return followerCard;
+}
+
+function scrollToFollower(behavior = "auto") {
+  const followerCard = document.getElementById("follower-card");
+  if (!followerCard) return;
+
+  followerCard.scrollIntoView({
+    behavior,
+    block: "center",
+  });
+}
+
+// Render all cards and anchor the scroll around the follower row
+function renderCards(initial = false) {
   const index = findRank(followers);
   const oldIndex = findRank(previousFollowers);
   const deltaIndex = index - oldIndex;
 
-  const above = populationData.slice(index, index + CARD_COUNT).reverse();
-  const below = populationData.slice(Math.max(0, index - CARD_COUNT), index).reverse();
-
   cardsContainer.innerHTML = "";
 
-  // Top cards
-  above.forEach(city => {
-    const card = document.createElement("div");
-    card.className = "card top-card";
-    card.textContent = `${city.city}, ${city.country} — ${city.population.toLocaleString()}`;
+  const higherPopulation = populationData.slice(index).reverse();
+  const lowerPopulation = populationData.slice(0, index).reverse();
+
+  higherPopulation.forEach((city, position) => {
+    const distanceFromFollower = higherPopulation.length - position;
+    const card = createCityCard(
+      city,
+      distanceFromFollower <= CONTEXT_ROWS ? "top" : "higher"
+    );
     cardsContainer.appendChild(card);
   });
 
-  // Follower card
-  const followerCard = document.createElement("div");
-  followerCard.className = "card follower";
-  followerCard.textContent = `Silly Billy Show Followers — ${followers.toLocaleString()}`;
-  cardsContainer.appendChild(followerCard);
+  cardsContainer.appendChild(createFollowerCard());
 
-  // Bottom cards
-  below.forEach(city => {
-    const card = document.createElement("div");
-    card.className = "card bottom-card";
-    card.textContent = `${city.city}, ${city.country} — ${city.population.toLocaleString()}`;
+  lowerPopulation.forEach((city, position) => {
+    const card = createCityCard(
+      city,
+      position < CONTEXT_ROWS ? "bottom" : "lower"
+    );
     cardsContainer.appendChild(card);
   });
+
+  scrollToFollower(initial ? "auto" : "smooth");
 
   if (!initial && deltaIndex !== 0) {
-    animateOvertaking(deltaIndex);
+    const followerCard = document.getElementById("follower-card");
+    if (followerCard) {
+      followerCard.animate(
+        [
+          { transform: "scale(1)", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" },
+          { transform: "scale(1.03)", boxShadow: "0 12px 24px rgba(255,0,80,0.3)" },
+          { transform: "scale(1)", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" },
+        ],
+        {
+          duration: 700,
+          easing: "ease-out",
+        }
+      );
+    }
   }
-}
-
-// Overtaking animation sequence
-function animateOvertaking(deltaIndex) {
-  const followerCard = document.querySelector(".card.follower");
-  const topCards = document.querySelectorAll(".top-card");
-  const bottomCards = document.querySelectorAll(".bottom-card");
-
-  if (!followerCard) return;
-
-  const direction = deltaIndex > 0 ? 1 : -1; // 1 = follower increased (cards move down), -1 = follower decreased
-  const liftDistance = 50;
-  const moveDistance = 60; // px per card
-  const liftDuration = 500;
-  const moveDuration = 2000;
-  const settleDuration = 700;
-
-  // 1️⃣ Lift follower card
-  followerCard.style.transition = `transform ${liftDuration}ms ease-out, box-shadow ${liftDuration}ms ease-out`;
-  followerCard.style.transform = `translateY(${-liftDistance * direction}px)`;
-  followerCard.style.boxShadow = "0 20px 50px rgba(0,0,0,0.4)";
-
-  // 2️⃣ Move top/bottom cards after lift
-  setTimeout(() => {
-    topCards.forEach(card => {
-      card.style.transition = `transform ${moveDuration}ms ease, filter ${moveDuration}ms ease`;
-      card.style.transform = `translateY(${moveDistance * direction}px)`;
-      card.style.filter = "blur(4px)";
-      setTimeout(() => {
-        card.style.transform = "translateY(0px)";
-        card.style.filter = "blur(0px)";
-      }, 50);
-    });
-
-    bottomCards.forEach(card => {
-      card.style.transition = `transform ${moveDuration}ms ease, filter ${moveDuration}ms ease`;
-      card.style.transform = `translateY(${moveDistance * direction}px)`;
-      card.style.filter = "blur(4px)";
-      setTimeout(() => {
-        card.style.transform = "translateY(0px)";
-        card.style.filter = "blur(0px)";
-      }, 50);
-    });
-
-  }, liftDuration);
-
-  // 3️⃣ Settle follower card after cards moved
-  setTimeout(() => {
-    followerCard.style.transition = `transform ${settleDuration}ms ease-in-out, box-shadow ${settleDuration}ms ease-in-out`;
-    followerCard.style.transform = "translateY(0px)";
-    followerCard.style.boxShadow = "0 2px 6px rgba(0,0,0,0.1)";
-  }, liftDuration + moveDuration);
 }
 
 // Milliseconds until next GMT minute
 function msToNextMinute() {
   const now = new Date();
-  return (60 - now.getUTCSeconds())*1000 - now.getUTCMilliseconds();
+  return (60 - now.getUTCSeconds()) * 1000 - now.getUTCMilliseconds();
 }
 
 // Countdown timer + scheduler
@@ -138,10 +123,11 @@ function startClock() {
   function updateTimer() {
     const now = new Date();
     const seconds = now.getUTCSeconds();
-    const remain = 60 - seconds;
+    const remain = seconds === 0 ? 0 : 60 - seconds;
     countdownEl.textContent = `Next update in ${remain}s`;
-    barEl.style.width = ((seconds/60)*100) + "%";
+    barEl.style.width = `${(seconds / 60) * 100}%`;
   }
+  updateTimer();
   setInterval(updateTimer, 1000);
 
   function schedule() {
