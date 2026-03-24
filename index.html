@@ -13,6 +13,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    color: #202020;
   }
 
   h1 {
@@ -21,16 +22,54 @@
     color: #ff0050;
   }
 
-  #timer-container {
+  #timer-container,
+  .summary-panel,
+  .search-panel,
+  .cards-wrap,
+  .map-panel {
     width: 100%;
-    max-width: 500px;
-    margin-bottom: 20px;
+    max-width: 760px;
+  }
+
+  #timer-container {
+    margin-bottom: 18px;
+  }
+
+  #countdown {
+    text-align: center;
+    font-size: 1em;
+    margin-bottom: 5px;
+  }
+
+  #bar-container {
+    width: 100%;
+    background: #ddd;
+    border-radius: 10px;
+    height: 10px;
+    overflow: hidden;
+  }
+
+  #bar {
+    height: 100%;
+    width: 0%;
+    background: #ff0050;
+    transition: width 0.5s linear;
+  }
+
+  .summary-panel {
+    background: #fff;
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.06);
+    margin-bottom: 16px;
+  }
+
+  .summary-item + .summary-item {
+    margin-top: 8px;
   }
 
   .search-panel {
-    width: 100%;
-    max-width: 500px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
     position: relative;
   }
 
@@ -93,61 +132,55 @@
     background: #fff1f6;
   }
 
-  #countdown {
-    text-align: center;
-    font-size: 1em;
-    margin-bottom: 5px;
-  }
-
-  #bar-container {
-    width: 100%;
-    background: #ddd;
-    border-radius: 10px;
-    height: 10px;
+  .cards-wrap {
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.06);
     overflow: hidden;
   }
 
-  #bar {
-    height: 100%;
-    width: 0%;
-    background: #ff0050;
-    transition: width 0.5s linear;
+  .cards-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    font-size: 0.88rem;
+    color: #666;
+    border-bottom: 1px solid #efefef;
   }
 
   .cards-container {
     width: 100%;
-    max-width: 500px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: min(75vh, 720px);
+    max-height: min(58vh, 720px);
     overflow-y: auto;
-    padding-right: 6px;
-    scroll-behavior: smooth;
+    padding: 14px 14px 18px;
+    box-sizing: border-box;
   }
 
   .card {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 68px minmax(0, 1fr) auto;
     align-items: center;
+    column-gap: 18px;
     background: #fff;
     padding: 12px 16px;
     border-radius: 8px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    transition: transform 0.8s ease;
     position: relative;
   }
 
-  .card-label {
-    flex: 1;
-    padding-right: 12px;
-  }
-
   .card-rank {
-    width: 44px;
-    flex: 0 0 44px;
     font-variant-numeric: tabular-nums;
     color: #7a7a7a;
+  }
+
+  .card-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .card-value {
@@ -165,9 +198,79 @@
     background: #ff0050;
     color: #fff;
     font-weight: bold;
-    font-size: 1.1em;
-    position: sticky;
-    z-index: 1;
+    font-size: 1.05em;
+  }
+
+  .attribution {
+    padding: 0 18px 16px;
+    font-size: 0.9rem;
+    color: #666;
+  }
+
+  .attribution a {
+    color: #666;
+  }
+
+  .map-panel {
+    margin-top: 16px;
+    background: #fff;
+    border-radius: 14px;
+    padding: 16px 18px 18px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.06);
+  }
+
+  .map-title {
+    margin: 0 0 8px;
+  }
+
+  .map-copy {
+    margin: 0 0 12px;
+    color: #666;
+    font-size: 0.95rem;
+  }
+
+  #world-map svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .map-bg {
+    fill: #f4f4f4;
+  }
+
+  .map-grid line {
+    stroke: #d8d8d8;
+    stroke-width: 1;
+  }
+
+  .remaining-point {
+    fill: #9f9f9f;
+    opacity: 0.65;
+  }
+
+  .overtaken-point {
+    fill: #1f9d5c;
+    opacity: 0.9;
+  }
+
+  @media (max-width: 640px) {
+    .search-row {
+      flex-wrap: wrap;
+    }
+
+    .search-action {
+      height: 44px;
+    }
+
+    .card {
+      grid-template-columns: 56px minmax(0, 1fr) auto;
+      column-gap: 12px;
+    }
+
+    .card-label {
+      white-space: normal;
+    }
   }
 </style>
 </head>
@@ -182,6 +285,11 @@
   </div>
 </div>
 
+<section class="summary-panel">
+  <div class="summary-item" id="next-place">Next place to overtake:</div>
+  <div class="summary-item" id="last-place">Place just taken over:</div>
+</section>
+
 <div class="search-panel">
   <div class="search-row">
     <input id="location-search" type="text" placeholder="Search for a location in the list" autocomplete="off">
@@ -191,9 +299,27 @@
   <div id="search-results" hidden></div>
 </div>
 
-<div class="cards-container" id="cards-container">
-  <!-- Cards will be injected here -->
-</div>
+<section class="cards-wrap">
+  <div class="cards-header">
+    <span>Rank and place</span>
+    <span>Population</span>
+  </div>
+
+  <div class="cards-container" id="cards-container">
+    <!-- Cards will be injected here -->
+  </div>
+
+  <div class="attribution">
+    Data source:
+    <a href="https://simplemaps.com/data/world-cities" target="_blank" rel="noreferrer">Simplemaps World Cities Database</a>
+  </div>
+</section>
+
+<section class="map-panel">
+  <h2 class="map-title">Takeover Map</h2>
+  <p class="map-copy">Green dots are places already overtaken by the account. Grey dots are still ahead.</p>
+  <div id="world-map"></div>
+</section>
 
 <script src="app.js"></script>
 </body>
