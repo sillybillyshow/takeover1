@@ -73,13 +73,14 @@ async function getFollowers() {
   previousFollowers = followers;
 
   try {
-    const response = await fetch(workerURL, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
+   const response = await fetch(workerURL, {
+  method: "GET",
+  headers: {
+    Accept: "application/json",
+    "x-api-key": process.env.WORKER_SECRET
+  },
+  cache: "no-store",
+});
 
     if (!response.ok) {
       throw new Error(`Follower request failed: ${response.status}`);
