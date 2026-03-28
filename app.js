@@ -6,20 +6,6 @@ let previousFollowers = 0;
 let focusedLocation = null;
 let selectedSuggestionIndex = -1;
 let searchableLocations = [];
-let projectedMapPoints = [];
-let mapNeedsRender = false;
-
-const MAP_WIDTH = 900;
-const MAP_HEIGHT = 420;
-const MAP_MIN_SCALE = 1;
-const MAP_MAX_SCALE = 12;
-const WORLD_LAND_PATHS = [
-  "M48 100 L88 82 L134 80 L170 92 L210 112 L242 110 L280 120 L312 146 L326 172 L312 194 L286 194 L252 182 L218 184 L190 196 L154 192 L116 176 L86 156 L58 132 Z",
-  "M302 220 L330 210 L354 220 L362 246 L348 276 L356 300 L344 328 L320 338 L304 316 L306 282 L296 250 Z",
-  "M402 104 L432 92 L470 88 L508 94 L544 106 L582 122 L624 134 L660 156 L694 182 L712 204 L704 228 L672 226 L642 214 L614 214 L592 228 L574 254 L544 258 L524 244 L508 220 L482 212 L456 202 L432 184 L414 162 Z",
-  "M610 266 L646 278 L674 298 L682 330 L664 354 L628 348 L604 324 L596 294 Z",
-  "M724 284 L752 274 L788 286 L820 304 L838 332 L832 360 L806 370 L776 354 L748 330 L728 304 Z",
-];
 
 const cardsContainer = document.getElementById("cards-container");
 const countdownEl = document.getElementById("countdown");
@@ -32,8 +18,360 @@ const nextPlaceNameEl = document.getElementById("next-place-name");
 const nextPlaceValueEl = document.getElementById("next-place-value");
 const lastPlaceNameEl = document.getElementById("last-place-name");
 const lastPlaceValueEl = document.getElementById("last-place-value");
-const mapCanvas = document.getElementById("world-map");
-const mapResetButton = document.getElementById("map-reset");
+
+async function loadData() {
+  const popRes = await fetch("populationdata.json");
+  populationData = await popRes.json();
+  populationData.sort((a, b) => a.population - b.population);
+
+  searchableLocations = populationData
+    .slice()
+    .reverse()
+    .map((city) => {
+      const key = getLocationKey(city);
+      return {
+        city,
+        key,
+        keyLower: key.toLowerCase(),
+      };
+    });
+
+  setupSearch();
+  await getFollowers();
+  renderView({
+    centerFocus: true,
+    preserveScroll: false,
+    followAccountIfVisible: false,
+  });
+  startClock();
+}
+
+async function getFollowers() {
+  previousFollowers = followers;
+
+  try {
+    const response = await fetch(workerURL, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "x-api-key": process.env.WORKER_SECRET,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Follower request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    followers = Number(data.followers);
+    if (!Number.isFinite(followers)) {
+      throw new Error("Worker response did not include a numeric followers value");
+    }
+  } catch (error) {
+    console.error("Follower fetch failed", error);
+    if (followers === 0) {
+      followers = 4258;
+      previousFollowers = 4258;
+    }
+  }
+}
+
+function findRank(value) {
+  let low = 0;
+  let high = populationData.length - 1;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (populationData[mid].population < value) low = mid + 1;
+    else high = mid - 1;
+  }
+  return low;
+}
+
+function getLocationKey(city) {
+  return `${city.city}, ${city.country}`;
+}
+
+function getFocusTarget() {
+  return focusedLocation || "followers";
+}
+
+function getFocusedElement() {
+  const key = getFocusTarget();
+  return cardsContainer.querySelector(`[data-location-key="${CSS.escape(key)}"]`);
+}
+
+function formatPlaceName(city) {
+  return `${city.city}, ${city.country}`;
+}
+
+function formatPlaceValue(city) {
+  return city.population.toLocaleString();
+}
+
+function updateTakeoverSummary(index) {
+  const nextPlace = populationData[index] || null;
+  const lastPlace = populationData[index - 1] || null;
+
+  nextPlaceNameEl.textContent = nextPlace ? formatPlaceName(nextPlace) : "None left";
+  nextPlaceValueEl.textContent = nextPlace ? formatPlaceValue(nextPlace) : "";
+
+  lastPlaceNameEl.textContent = lastPlace ? formatPlaceName(lastPlace) : "None yet";
+  lastPlaceValueEl.textContent = lastPlace ? formatPlaceValue(lastPlace) : "";
+}
+
+function createCityCard(city, rank) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.dataset.locationKey = getLocationKey(city);
+
+  const rankLabel = document.createElement("span");
+  rankLabel.className = "card-rank";
+  rankLabel.textContent = `${rank})`;
+
+  const name = document.createElement("span");
+  name.className = "card-label";
+  name.textContent = formatPlaceName(city);
+
+  const population = document.createElement("span");
+  population.className = "card-value";
+  population.textContent = formatPlaceValue(city);
+
+  card.appendChild(rankLabel);
+  card.appendChild(name);
+  card.appendChild(population);
+  return card;
+}
+
+function createFollowerCard(rank) {
+  const followerCard = document.createElement("div");
+  followerCard.className = "card follower";
+  followerCard.dataset.locationKey = "followers";
+
+  const rankLabel = document.createElement("span");
+  rankLabel.className = "card-rank";
+  rankLabel.textContent = `${rank})`;
+
+  const name = document.createElement("span");
+  name.className = "card-label";
+  name.textContent = "Silly Billy Show Followers";
+
+  const population = document.createElement("span");
+  population.className = "card-value";
+  population.textContent = followers.toLocaleString();
+
+  followerCard.appendChild(rankLabel);
+  followerCard.appendChild(name);
+  followerCard.appendChild(population);
+  return followerCard;
+}
+
+function getSearchMatches(query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+
+  return searchableLocations
+    .filter((entry) => entry.keyLower.includes(normalizedQuery))
+    .slice(0, 8);
+}
+
+function clearSearchResults() {
+  searchResults.innerHTML = "";
+  searchResults.hidden = true;
+  selectedSuggestionIndex = -1;
+}
+
+function renderSearchResults(matches) {
+  clearSearchResults();
+  if (!matches.length) return;
+
+  matches.forEach((entry, index) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "search-result";
+    option.dataset.index = String(index);
+    option.textContent = entry.key;
+    option.addEventListener("click", () => {
+      searchInput.value = entry.key;
+      focusedLocation = entry.key;
+      clearSearchResults();
+      renderView({
+        centerFocus: true,
+        preserveScroll: false,
+        followAccountIfVisible: false,
+      });
+    });
+    searchResults.appendChild(option);
+  });
+
+  searchResults.hidden = false;
+}
+
+function updateSuggestionSelection() {
+  const results = Array.from(searchResults.querySelectorAll(".search-result"));
+  results.forEach((result, index) => {
+    result.classList.toggle("active", index === selectedSuggestionIndex);
+  });
+}
+
+function showSearchResults() {
+  renderSearchResults(getSearchMatches(searchInput.value));
+}
+
+function setupSearch() {
+  if (!searchInput || !searchButton || !resetButton || !searchResults) return;
+
+  searchInput.addEventListener("keydown", (event) => {
+    const results = Array.from(searchResults.querySelectorAll(".search-result"));
+
+    if (event.key === "ArrowDown") {
+      if (searchResults.hidden) {
+        showSearchResults();
+      }
+      const refreshedResults = Array.from(searchResults.querySelectorAll(".search-result"));
+      if (!refreshedResults.length) return;
+      event.preventDefault();
+      selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, refreshedResults.length - 1);
+      updateSuggestionSelection();
+    }
+
+    if (event.key === "ArrowUp") {
+      if (!results.length) return;
+      event.preventDefault();
+      selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, 0);
+      updateSuggestionSelection();
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      showSearchResults();
+    }
+  });
+
+  searchButton.addEventListener("click", showSearchResults);
+
+  resetButton.addEventListener("click", () => {
+    focusedLocation = null;
+    searchInput.value = "";
+    clearSearchResults();
+    renderView({
+      centerFocus: true,
+      preserveScroll: false,
+      followAccountIfVisible: false,
+    });
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".search-panel")) {
+      clearSearchResults();
+    }
+  });
+}
+
+function isAccountVisible() {
+  const followerCard = cardsContainer.querySelector('[data-location-key="followers"]');
+  if (!followerCard) return false;
+
+  const containerTop = cardsContainer.scrollTop;
+  const containerBottom = containerTop + cardsContainer.clientHeight;
+  const cardTop = followerCard.offsetTop;
+  const cardBottom = cardTop + followerCard.offsetHeight;
+
+  return cardBottom >= containerTop && cardTop <= containerBottom;
+}
+
+function renderCards(options = {}) {
+  const {
+    centerFocus = false,
+    preserveScroll = false,
+    followAccountIfVisible = false,
+  } = options;
+  const currentScrollTop = preserveScroll ? cardsContainer.scrollTop : 0;
+  const accountWasVisible = followAccountIfVisible ? isAccountVisible() : false;
+  const index = findRank(followers);
+  const higherPopulation = populationData.slice(index).reverse();
+  const lowerPopulation = populationData.slice(0, index).reverse();
+  const followerRank = higherPopulation.length + 1;
+
+  cardsContainer.innerHTML = "";
+
+  higherPopulation.forEach((city, position) => {
+    cardsContainer.appendChild(createCityCard(city, position + 1));
+  });
+
+  cardsContainer.appendChild(createFollowerCard(followerRank));
+
+  lowerPopulation.forEach((city, position) => {
+    cardsContainer.appendChild(createCityCard(city, followerRank + position + 1));
+  });
+
+  const focusedElement = getFocusedElement();
+  if (focusedElement) {
+    focusedElement.classList.add("focused-card");
+  }
+
+  if (preserveScroll) {
+    cardsContainer.scrollTop = currentScrollTop;
+  }
+
+  if (accountWasVisible) {
+    const followerCard = cardsContainer.querySelector('[data-location-key="followers"]');
+    if (followerCard) {
+      followerCard.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  } else if (!preserveScroll && centerFocus) {
+    const target = focusedElement || cardsContainer.querySelector('[data-location-key="followers"]');
+    if (target) {
+      target.scrollIntoView({
+        behavior: "auto",
+        block: "center",
+      });
+    }
+  }
+
+  updateTakeoverSummary(index);
+}
+
+function renderView(options = {}) {
+  renderCards(options);
+}
+
+function msToNextMinute() {
+  const now = new Date();
+  return (60 - now.getUTCSeconds()) * 1000 - now.getUTCMilliseconds();
+}
+
+function startClock() {
+  function updateTimer() {
+    const now = new Date();
+    const seconds = now.getUTCSeconds();
+    const remain = seconds === 0 ? 0 : 60 - seconds;
+    countdownEl.textContent = `Next update in ${remain}s`;
+    barEl.style.width = `${(seconds / 60) * 100}%`;
+  }
+
+  updateTimer();
+  setInterval(updateTimer, 1000);
+
+  function schedule() {
+    setTimeout(async () => {
+      await getFollowers();
+      renderView({
+        centerFocus: false,
+        preserveScroll: true,
+        followAccountIfVisible: true,
+      });
+      schedule();
+    }, msToNextMinute());
+  }
+
+  schedule();
+}
+
+loadData();
 
 async function loadData() {
   const popRes = await fetch("populationdata.json");
