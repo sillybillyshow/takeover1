@@ -26,7 +26,6 @@
   .summary-panel,
   .search-panel,
   .cards-wrap,
-  .map-panel,
   .page-footer {
     width: 100%;
     max-width: 760px;
@@ -126,8 +125,7 @@
     color: #fff;
   }
 
-  #reset-button,
-  #map-reset {
+  #reset-button {
     background: #ececec;
     color: #222;
   }
@@ -234,59 +232,6 @@
     color: #fff;
   }
 
-  .map-panel {
-    margin-top: 16px;
-    background: #fff;
-    border-radius: 14px;
-    padding: 16px 18px 18px;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.06);
-  }
-
-  .map-top {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: center;
-    margin-bottom: 8px;
-  }
-
-  .map-title {
-    margin: 0;
-  }
-
-  .map-copy {
-    margin: 0 0 12px;
-    color: #666;
-    font-size: 0.95rem;
-  }
-
-  #map-reset {
-    border: 0;
-    border-radius: 10px;
-    padding: 10px 14px;
-    cursor: pointer;
-  }
-
-  .map-frame {
-    border-radius: 18px;
-    overflow: hidden;
-    background: #eef3f6;
-    min-height: 220px;
-  }
-
-  #world-map {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 900 / 420;
-    display: block;
-    touch-action: none;
-    cursor: grab;
-  }
-
-  #world-map:active {
-    cursor: grabbing;
-  }
-
   .page-footer {
     margin-top: 16px;
     padding-bottom: 12px;
@@ -319,11 +264,6 @@
 
     .card-label {
       white-space: normal;
-    }
-
-    .map-top {
-      flex-direction: column;
-      align-items: flex-start;
     }
   }
 </style>
@@ -371,17 +311,6 @@
 
   <div class="cards-container" id="cards-container">
     <!-- Cards will be injected here -->
-  </div>
-</section>
-
-<section class="map-panel">
-  <div class="map-top">
-    <h2 class="map-title">Takeover Map</h2>
-    <button id="map-reset" type="button">Reset map</button>
-  </div>
-  <p class="map-copy">Green points are places already overtaken by the account. Grey points are still ahead. Use your mouse wheel or trackpad to zoom, then drag to pan.</p>
-  <div class="map-frame">
-    <canvas id="world-map"></canvas>
   </div>
 </section>
 
