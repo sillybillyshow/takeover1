@@ -1,324 +1,318 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Silly Billy Show Takeover</title>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #f7f7f7;
-    margin: 0;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    color: #202020;
-  }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Silly Billy Show Takeover</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f7f7;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: #202020;
+    }
 
-  h1 {
-    text-align: center;
-    margin-bottom: 10px;
-    color: #ff0050;
-  }
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      color: #ff0050;
+    }
 
-  #timer-container,
-  .summary-panel,
-  .search-panel,
-  .cards-wrap,
-  .page-footer {
-    width: 100%;
-    max-width: 760px;
-  }
+    #timer-container,
+    .summary-panel,
+    .search-panel,
+    .cards-wrap,
+    .page-footer {
+      width: 100%;
+      max-width: 760px;
+    }
 
-  #timer-container {
-    margin-bottom: 18px;
-  }
+    #timer-container {
+      margin-bottom: 18px;
+    }
 
-  #countdown {
-    text-align: center;
-    font-size: 1em;
-    margin-bottom: 5px;
-  }
+    #countdown {
+      text-align: center;
+      font-size: 1em;
+      margin-bottom: 5px;
+    }
 
-  #bar-container {
-    width: 100%;
-    background: #ddd;
-    border-radius: 10px;
-    height: 10px;
-    overflow: hidden;
-  }
+    #bar-container {
+      width: 100%;
+      background: #ddd;
+      border-radius: 10px;
+      height: 10px;
+      overflow: hidden;
+    }
 
-  #bar {
-    height: 100%;
-    width: 0%;
-    background: #ff0050;
-    transition: width 0.5s linear;
-  }
+    #bar {
+      height: 100%;
+      width: 0%;
+      background: #ff0050;
+      transition: width 0.5s linear;
+    }
 
-  .summary-panel {
-    margin-bottom: 16px;
-  }
+    .summary-panel {
+      margin-bottom: 16px;
+    }
 
-  .summary-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .summary-card {
-    background: #fff;
-    border-radius: 14px;
-    padding: 16px 18px;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.06);
-  }
-
-  .summary-heading {
-    display: block;
-    font-size: 0.88rem;
-    color: #777;
-    margin-bottom: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  .summary-name {
-    display: block;
-    font-size: 1rem;
-    margin-bottom: 4px;
-  }
-
-  .summary-value {
-    display: block;
-    font-weight: bold;
-    color: #ff0050;
-  }
-
-  .search-panel {
-    margin-bottom: 14px;
-    position: relative;
-  }
-
-  .search-row {
-    display: flex;
-    gap: 8px;
-  }
-
-  #location-search {
-    flex: 1;
-    padding: 12px 14px;
-    border: 1px solid #d6d6d6;
-    border-radius: 10px;
-    font-size: 1rem;
-  }
-
-  .search-action {
-    border: 0;
-    border-radius: 10px;
-    padding: 0 14px;
-    font-size: 0.95rem;
-    cursor: pointer;
-  }
-
-  #search-button {
-    background: #ff0050;
-    color: #fff;
-  }
-
-  #reset-button {
-    background: #ececec;
-    color: #222;
-  }
-
-  #search-results {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    right: 0;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 12px;
-    box-shadow: 0 12px 30px rgba(0,0,0,0.08);
-    overflow: hidden;
-    z-index: 10;
-  }
-
-  .search-result {
-    display: block;
-    width: 100%;
-    padding: 11px 14px;
-    border: 0;
-    background: #fff;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .search-result:hover,
-  .search-result.active {
-    background: #fff1f6;
-  }
-
-  .cards-wrap {
-    background: #fff;
-    border-radius: 14px;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.06);
-    overflow: hidden;
-  }
-
-  .cards-header {
-    display: flex;
-    justify-content: space-between;
-    padding: 14px 18px 10px;
-    font-size: 0.88rem;
-    color: #666;
-  }
-
-  .cards-container {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-height: min(58vh, 720px);
-    overflow-y: auto;
-    padding: 14px 14px 18px;
-    box-sizing: border-box;
-  }
-
-  .card {
-    display: grid;
-    grid-template-columns: 80px minmax(0, 1fr) auto;
-    align-items: center;
-    column-gap: 22px;
-    background: #fff;
-    padding: 12px 16px;
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    position: relative;
-  }
-
-  .card-rank {
-    font-variant-numeric: tabular-nums;
-    color: #7a7a7a;
-  }
-
-  .card-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .card-value {
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    text-align: right;
-  }
-
-  .card.focused-card {
-    outline: 2px solid rgba(255,0,80,0.18);
-    box-shadow: 0 10px 24px rgba(0,0,0,0.1);
-  }
-
-  .card.follower {
-    background: #ff0050;
-    color: #fff;
-    font-weight: bold;
-    font-size: 1.05em;
-  }
-
-  .card.follower .card-rank,
-  .card.follower .card-label,
-  .card.follower .card-value {
-    color: #fff;
-  }
-
-  .page-footer {
-    margin-top: 16px;
-    padding-bottom: 12px;
-    text-align: center;
-    color: #666;
-    font-size: 0.92rem;
-  }
-
-  .page-footer a {
-    color: #666;
-  }
-
-  @media (max-width: 640px) {
     .summary-grid {
-      grid-template-columns: 1fr;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .summary-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 16px 18px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.06);
+    }
+
+    .summary-heading {
+      display: block;
+      font-size: 0.88rem;
+      color: #777;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .summary-name {
+      display: block;
+      font-size: 1rem;
+      margin-bottom: 4px;
+    }
+
+    .summary-value {
+      display: block;
+      font-weight: bold;
+      color: #ff0050;
+    }
+
+    .search-panel {
+      margin-bottom: 14px;
+      position: relative;
     }
 
     .search-row {
-      flex-wrap: wrap;
+      display: flex;
+      gap: 8px;
+    }
+
+    #location-search {
+      flex: 1;
+      padding: 12px 14px;
+      border: 1px solid #d6d6d6;
+      border-radius: 10px;
+      font-size: 1rem;
     }
 
     .search-action {
-      height: 44px;
+      border: 0;
+      border-radius: 10px;
+      padding: 0 14px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    #search-button {
+      background: #ff0050;
+      color: #fff;
+    }
+
+    #reset-button {
+      background: #ececec;
+      color: #222;
+    }
+
+    #search-results {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+      overflow: hidden;
+      z-index: 10;
+    }
+
+    .search-result {
+      display: block;
+      width: 100%;
+      padding: 11px 14px;
+      border: 0;
+      background: #fff;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .search-result:hover,
+    .search-result.active {
+      background: #fff1f6;
+    }
+
+    .cards-wrap {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.06);
+      overflow: hidden;
+    }
+
+    .cards-header {
+      display: flex;
+      justify-content: space-between;
+      padding: 14px 18px 10px;
+      font-size: 0.88rem;
+      color: #666;
+    }
+
+    .cards-container {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: min(58vh, 720px);
+      overflow-y: auto;
+      padding: 14px 14px 18px;
+      box-sizing: border-box;
     }
 
     .card {
-      grid-template-columns: 68px minmax(0, 1fr) auto;
-      column-gap: 14px;
+      display: grid;
+      grid-template-columns: 80px minmax(0, 1fr) auto;
+      align-items: center;
+      column-gap: 22px;
+      background: #fff;
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .card-rank {
+      font-variant-numeric: tabular-nums;
+      color: #7a7a7a;
     }
 
     .card-label {
-      white-space: normal;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-  }
-</style>
+
+    .card-value {
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    .card.focused-card {
+      outline: 2px solid rgba(255,0,80,0.18);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.1);
+    }
+
+    .card.follower {
+      background: #ff0050;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    .card.follower .card-rank,
+    .card.follower .card-label,
+    .card.follower .card-value {
+      color: #fff;
+    }
+
+    .page-footer {
+      margin-top: 16px;
+      padding-bottom: 12px;
+      text-align: center;
+      color: #666;
+      font-size: 0.92rem;
+    }
+
+    .page-footer a {
+      color: #666;
+    }
+
+    @media (max-width: 640px) {
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .search-row {
+        flex-wrap: wrap;
+      }
+
+      .search-action {
+        height: 44px;
+      }
+
+      .card {
+        grid-template-columns: 68px minmax(0, 1fr) auto;
+        column-gap: 14px;
+      }
+
+      .card-label {
+        white-space: normal;
+      }
+    }
+  </style>
 </head>
 <body>
+  <h1>Silly Billy Show Takeover</h1>
 
-<h1>Silly Billy Show Takeover</h1>
-
-<div id="timer-container">
-  <div id="countdown">Next update in 60s</div>
-  <div id="bar-container">
-    <div id="bar"></div>
-  </div>
-</div>
-
-<section class="summary-panel">
-  <div class="summary-grid">
-    <article class="summary-card">
-      <span class="summary-heading">Place Just Taken Over</span>
-      <span class="summary-name" id="last-place-name">Loading...</span>
-      <span class="summary-value" id="last-place-value"></span>
-    </article>
-    <article class="summary-card">
-      <span class="summary-heading">Next Place To Overtake</span>
-      <span class="summary-name" id="next-place-name">Loading...</span>
-      <span class="summary-value" id="next-place-value"></span>
-    </article>
-  </div>
-</section>
-
-<div class="search-panel">
-  <div class="search-row">
-    <input id="location-search" type="text" placeholder="Search for a location in the list" autocomplete="off">
-    <button id="search-button" class="search-action" type="button">Search</button>
-    <button id="reset-button" class="search-action" type="button">Reset</button>
-  </div>
-  <div id="search-results" hidden></div>
-</div>
-
-<section class="cards-wrap">
-  <div class="cards-header">
-    <span>Rank and place</span>
-    <span>Population</span>
+  <div id="timer-container">
+    <div id="countdown">Next update in 60s</div>
+    <div id="bar-container">
+      <div id="bar"></div>
+    </div>
   </div>
 
-  <div class="cards-container" id="cards-container">
-    <!-- Cards will be injected here -->
+  <section class="summary-panel">
+    <div class="summary-grid">
+      <article class="summary-card">
+        <span class="summary-heading">Place Just Taken Over</span>
+        <span class="summary-name" id="last-place-name">Loading...</span>
+        <span class="summary-value" id="last-place-value"></span>
+      </article>
+      <article class="summary-card">
+        <span class="summary-heading">Next Place To Overtake</span>
+        <span class="summary-name" id="next-place-name">Loading...</span>
+        <span class="summary-value" id="next-place-value"></span>
+      </article>
+    </div>
+  </section>
+
+  <div class="search-panel">
+    <div class="search-row">
+      <input id="location-search" type="text" placeholder="Search for a location in the list" autocomplete="off">
+      <button id="search-button" class="search-action" type="button">Search</button>
+      <button id="reset-button" class="search-action" type="button">Reset</button>
+    </div>
+    <div id="search-results" hidden></div>
   </div>
-</section>
 
-<footer class="page-footer">
-  Data source:
-  <a href="https://simplemaps.com/data/world-cities" target="_blank" rel="noreferrer">Simplemaps World Cities Database</a>
-</footer>
+  <section class="cards-wrap">
+    <div class="cards-header">
+      <span>Rank and place</span>
+      <span>Population</span>
+    </div>
+    <div class="cards-container" id="cards-container"></div>
+  </section>
 
-<script src="app.js"></script>
+  <footer class="page-footer">
+    Data source:
+    <a href="https://simplemaps.com/data/world-cities" target="_blank" rel="noreferrer">Simplemaps World Cities Database</a>
+  </footer>
+
+  <script src="app.js"></script>
 </body>
 </html>
