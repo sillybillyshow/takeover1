@@ -1,453 +1,254 @@
 const GIST_URL = "https://gist.githubusercontent.com/sillybillyshow/ae68c331d964ff293623a01ca1766256/raw/tiktok_stats.json";
 const FOLLOWER_CACHE_KEY = "sbs-followers-cache";
-const IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 
 let populationData = [];
 let followers = 0;
-let previousFollowers = 0;
-let focusedLocation = null;
-let selectedSuggestionIndex = -1;
 let searchableLocations = [];
-let lastActivityAt = Date.now();
-let hasLoadedInitialFollowers = false;
+let focusedKey = null;
+let hasLoaded = false;
+let timerInterval = null;
 
-const cardsContainer = document.getElementById("cards-container");
+// DOM refs
 const countdownEl = document.getElementById("countdown");
 const barEl = document.getElementById("bar");
 const searchInput = document.getElementById("location-search");
 const searchButton = document.getElementById("search-button");
 const resetButton = document.getElementById("reset-button");
 const searchResults = document.getElementById("search-results");
-const nextPlaceNameEl = document.getElementById("next-place-name");
-const nextPlaceValueEl = document.getElementById("next-place-value");
-const lastPlaceNameEl = document.getElementById("last-place-name");
-const lastPlaceValueEl = document.getElementById("last-place-value");
+const panelLastName = document.getElementById("panel-last-name");
+const panelLastPop = document.getElementById("panel-last-pop");
+const panelFollowers = document.getElementById("panel-followers");
+const panelNextName = document.getElementById("panel-next-name");
+const panelNextPop = document.getElementById("panel-next-pop");
+const tableBody = document.getElementById("table-body");
+
+// ── Data loading ─────────────────────────────────────────────────────────────
 
 async function loadData() {
-  const popRes = await fetch("populationdata.json");
+  const [popRes] = await Promise.all([fetch("populationdata.json")]);
   populationData = await popRes.json();
   populationData.sort((a, b) => a.population - b.population);
 
   searchableLocations = populationData
     .slice()
     .reverse()
-    .map((city) => {
-      const key = getLocationKey(city);
-      return {
-        city,
-        key,
-        keyLower: key.toLowerCase(),
-      };
-    });
+    .map(city => ({ city, key: cityKey(city), keyLower: cityKey(city).toLowerCase() }));
 
   setupSearch();
 
-  const cachedFollowers = readFollowersCache();
-  if (cachedFollowers !== null) {
-    followers = cachedFollowers;
-    previousFollowers = cachedFollowers;
-    hasLoadedInitialFollowers = true;
-    renderView({
-      centerFocus: true,
-      preserveScroll: false,
-      followAccountIfVisible: false,
-    });
-  } else {
-    renderLoadingState();
+  const cached = readCache();
+  if (cached !== null) {
+    followers = cached;
+    hasLoaded = true;
+    render();
   }
 
+  await fetchFollowers();
   startClock();
 }
 
-function readFollowersCache() {
+// ── Followers ─────────────────────────────────────────────────────────────────
+
+function readCache() {
   try {
     const raw = localStorage.getItem(FOLLOWER_CACHE_KEY);
     if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-    const value = Number(parsed.followers);
-    return Number.isFinite(value) ? value : null;
-  } catch (error) {
-    console.error("Failed to read follower cache", error);
-    return null;
-  }
+    const v = Number(JSON.parse(raw).followers);
+    return Number.isFinite(v) ? v : null;
+  } catch { return null; }
 }
 
-function writeFollowersCache(value) {
+function writeCache(v) {
   try {
-    localStorage.setItem(
-      FOLLOWER_CACHE_KEY,
-      JSON.stringify({
-        followers: value,
-        savedAt: Date.now(),
-      })
-    );
-  } catch (error) {
-    console.error("Failed to write follower cache", error);
-  }
+    localStorage.setItem(FOLLOWER_CACHE_KEY, JSON.stringify({ followers: v }));
+  } catch {}
 }
 
-function renderLoadingState() {
-  countdownEl.textContent = "Follower count loading";
-  cardsContainer.innerHTML = "";
-  nextPlaceNameEl.textContent = "Loading...";
-  nextPlaceValueEl.textContent = "";
-  lastPlaceNameEl.textContent = "Loading...";
-  lastPlaceValueEl.textContent = "";
-}
-
-async function getFollowers() {
-  previousFollowers = followers;
-
-  const response = await fetch(GIST_URL);
-
-  if (!response.ok) {
-    throw new Error(`Gist request failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const nextFollowers = Number(data.followers);
-
-  if (!Number.isFinite(nextFollowers)) {
-    throw new Error("Gist response did not include a numeric followers value");
-  }
-
-  followers = nextFollowers;
-  writeFollowersCache(followers);
-}
-
-function findRank(value) {
-  let low = 0;
-  let high = populationData.length - 1;
-  while (low <= high) {
-    const mid = Math.floor((low + high) / 2);
-    if (populationData[mid].population < value) low = mid + 1;
-    else high = mid - 1;
-  }
-  return low;
-}
-
-function getLocationKey(city) {
-  return `${city.city}, ${city.country}`;
-}
-
-function getFocusTarget() {
-  return focusedLocation || "followers";
-}
-
-function getFocusedElement() {
-  const key = getFocusTarget();
-  return cardsContainer.querySelector(`[data-location-key="${CSS.escape(key)}"]`);
-}
-
-function formatPlaceName(city) {
-  return `${city.city}, ${city.country}`;
-}
-
-function formatPlaceValue(city) {
-  return city.population.toLocaleString();
-}
-
-function updateTakeoverSummary(index) {
-  const nextPlace = populationData[index] || null;
-  const lastPlace = populationData[index - 1] || null;
-
-  nextPlaceNameEl.textContent = nextPlace ? formatPlaceName(nextPlace) : "None left";
-  nextPlaceValueEl.textContent = nextPlace ? formatPlaceValue(nextPlace) : "";
-
-  lastPlaceNameEl.textContent = lastPlace ? formatPlaceName(lastPlace) : "None yet";
-  lastPlaceValueEl.textContent = lastPlace ? formatPlaceValue(lastPlace) : "";
-}
-
-function createCityCard(city, rank) {
-  const card = document.createElement("div");
-  card.className = "card";
-  card.dataset.locationKey = getLocationKey(city);
-
-  const rankLabel = document.createElement("span");
-  rankLabel.className = "card-rank";
-  rankLabel.textContent = `${rank})`;
-
-  const name = document.createElement("span");
-  name.className = "card-label";
-  name.textContent = formatPlaceName(city);
-
-  const population = document.createElement("span");
-  population.className = "card-value";
-  population.textContent = formatPlaceValue(city);
-
-  card.appendChild(rankLabel);
-  card.appendChild(name);
-  card.appendChild(population);
-  return card;
-}
-
-function createFollowerCard(rank) {
-  const followerCard = document.createElement("div");
-  followerCard.className = "card follower";
-  followerCard.dataset.locationKey = "followers";
-
-  const rankLabel = document.createElement("span");
-  rankLabel.className = "card-rank";
-  rankLabel.textContent = `${rank})`;
-
-  const name = document.createElement("span");
-  name.className = "card-label";
-  name.textContent = "Silly Billy Show Followers";
-
-  const population = document.createElement("span");
-  population.className = "card-value";
-  population.textContent = followers.toLocaleString();
-
-  followerCard.appendChild(rankLabel);
-  followerCard.appendChild(name);
-  followerCard.appendChild(population);
-  return followerCard;
-}
-
-function getSearchMatches(query) {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return [];
-
-  return searchableLocations
-    .filter((entry) => entry.keyLower.includes(normalizedQuery))
-    .slice(0, 8);
-}
-
-function clearSearchResults() {
-  searchResults.innerHTML = "";
-  searchResults.hidden = true;
-  selectedSuggestionIndex = -1;
-}
-
-function renderSearchResults(matches) {
-  clearSearchResults();
-  if (!matches.length) return;
-
-  matches.forEach((entry, index) => {
-    const option = document.createElement("button");
-    option.type = "button";
-    option.className = "search-result";
-    option.dataset.index = String(index);
-    option.textContent = entry.key;
-    option.addEventListener("click", () => {
-      searchInput.value = entry.key;
-      focusedLocation = entry.key;
-      clearSearchResults();
-      renderView({
-        centerFocus: true,
-        preserveScroll: false,
-        followAccountIfVisible: false,
-      });
-    });
-    searchResults.appendChild(option);
-  });
-
-  searchResults.hidden = false;
-}
-
-function updateSuggestionSelection() {
-  const results = Array.from(searchResults.querySelectorAll(".search-result"));
-  results.forEach((result, index) => {
-    result.classList.toggle("active", index === selectedSuggestionIndex);
-  });
-}
-
-function showSearchResults() {
-  renderSearchResults(getSearchMatches(searchInput.value));
-}
-
-function setupSearch() {
-  if (!searchInput || !searchButton || !resetButton || !searchResults) return;
-
-  searchInput.addEventListener("keydown", (event) => {
-    const results = Array.from(searchResults.querySelectorAll(".search-result"));
-
-    if (event.key === "ArrowDown") {
-      if (searchResults.hidden) {
-        showSearchResults();
-      }
-      const refreshedResults = Array.from(searchResults.querySelectorAll(".search-result"));
-      if (!refreshedResults.length) return;
-      event.preventDefault();
-      selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, refreshedResults.length - 1);
-      updateSuggestionSelection();
+async function fetchFollowers() {
+  try {
+    const res = await fetch(GIST_URL);
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    const v = Number(data.followers);
+    if (!Number.isFinite(v)) throw new Error("bad value");
+    if (v !== followers || !hasLoaded) {
+      followers = v;
+      writeCache(v);
+      hasLoaded = true;
+      render();
     }
-
-    if (event.key === "ArrowUp") {
-      if (!results.length) return;
-      event.preventDefault();
-      selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, 0);
-      updateSuggestionSelection();
-    }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      showSearchResults();
-    }
-  });
-
-  searchButton.addEventListener("click", showSearchResults);
-
-  resetButton.addEventListener("click", () => {
-    focusedLocation = null;
-    searchInput.value = "";
-    clearSearchResults();
-    renderView({
-      centerFocus: true,
-      preserveScroll: false,
-      followAccountIfVisible: false,
-    });
-  });
-
-  document.addEventListener("click", (event) => {
-    if (!event.target.closest(".search-panel")) {
-      clearSearchResults();
-    }
-  });
-}
-
-function markActivity() {
-  lastActivityAt = Date.now();
-}
-
-function isUserActive() {
-  return Date.now() - lastActivityAt < IDLE_TIMEOUT_MS;
-}
-
-function shouldPollFollowers() {
-  return !document.hidden && isUserActive();
-}
-
-function isAccountVisible() {
-  const followerCard = cardsContainer.querySelector('[data-location-key="followers"]');
-  if (!followerCard) return false;
-
-  const containerTop = cardsContainer.scrollTop;
-  const containerBottom = containerTop + cardsContainer.clientHeight;
-  const cardTop = followerCard.offsetTop;
-  const cardBottom = cardTop + followerCard.offsetHeight;
-
-  return cardBottom >= containerTop && cardTop <= containerBottom;
-}
-
-function renderCards(options = {}) {
-  const {
-    centerFocus = false,
-    preserveScroll = false,
-    followAccountIfVisible = false,
-  } = options;
-  const currentScrollTop = preserveScroll ? cardsContainer.scrollTop : 0;
-  const accountWasVisible = followAccountIfVisible ? isAccountVisible() : false;
-  const index = findRank(followers);
-  const higherPopulation = populationData.slice(index).reverse();
-  const lowerPopulation = populationData.slice(0, index).reverse();
-  const followerRank = higherPopulation.length + 1;
-
-  cardsContainer.innerHTML = "";
-
-  higherPopulation.forEach((city, position) => {
-    cardsContainer.appendChild(createCityCard(city, position + 1));
-  });
-
-  cardsContainer.appendChild(createFollowerCard(followerRank));
-
-  lowerPopulation.forEach((city, position) => {
-    cardsContainer.appendChild(createCityCard(city, followerRank + position + 1));
-  });
-
-  const focusedElement = getFocusedElement();
-  if (focusedElement) {
-    focusedElement.classList.add("focused-card");
+  } catch (e) {
+    console.error("Follower fetch failed", e);
   }
-
-  if (preserveScroll) {
-    cardsContainer.scrollTop = currentScrollTop;
-  }
-
-  if (accountWasVisible) {
-    const followerCard = cardsContainer.querySelector('[data-location-key="followers"]');
-    if (followerCard) {
-      followerCard.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }
-  } else if (!preserveScroll && centerFocus) {
-    const target = focusedElement || cardsContainer.querySelector('[data-location-key="followers"]');
-    if (target) {
-      target.scrollIntoView({
-        behavior: "auto",
-        block: "center",
-      });
-    }
-  }
-
-  updateTakeoverSummary(index);
 }
 
-function renderView(options = {}) {
-  renderCards(options);
-}
+// ── Clock ─────────────────────────────────────────────────────────────────────
 
-function msToNextMinute() {
+function msUntilNextFetch() {
+  // Fire at each minute + 10s (i.e. when clock shows :10)
   const now = new Date();
-  return (60 - now.getUTCSeconds()) * 1000 - now.getUTCMilliseconds();
+  const s = now.getUTCSeconds();
+  const ms = now.getUTCMilliseconds();
+  const secondsUntil = s < 10 ? (10 - s) : (70 - s);
+  return secondsUntil * 1000 - ms;
 }
 
 function startClock() {
-  ["pointerdown", "pointermove", "keydown", "scroll", "touchstart"].forEach((eventName) => {
-    window.addEventListener(eventName, markActivity, { passive: true });
-  });
-
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-      markActivity();
-    }
-  });
-
-  function updateTimer() {
+  // Countdown bar: counts 0→60 aligned to wall clock seconds
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
     const now = new Date();
-    const seconds = now.getUTCSeconds();
-    const remain = seconds === 0 ? 0 : 60 - seconds;
+    const s = now.getUTCSeconds();
+    const ms = now.getUTCMilliseconds();
+    // Time until next :10 mark
+    const secondsUntil = s < 10 ? (10 - s) : (70 - s);
+    const totalMs = secondsUntil * 1000 - ms;
+    const pct = 1 - totalMs / 60000;
+    barEl.style.width = `${Math.max(0, Math.min(1, pct)) * 100}%`;
+    countdownEl.textContent = `Next update in ${Math.ceil(totalMs / 1000)}s`;
+  }, 250);
 
-    if (!hasLoadedInitialFollowers) {
-      countdownEl.textContent = "Follower count loading";
-    } else if (shouldPollFollowers()) {
-      countdownEl.textContent = `Next update in ${remain}s`;
-    } else {
-      countdownEl.textContent = "Updates paused";
-    }
-
-    barEl.style.width = `${(seconds / 60) * 100}%`;
-  }
-
-  updateTimer();
-  setInterval(updateTimer, 1000);
-
-  function schedule() {
+  // Schedule fetches at :10 past each minute
+  function scheduleFetch() {
     setTimeout(async () => {
-      const initialLoad = !hasLoadedInitialFollowers;
-
-      if (shouldPollFollowers() || initialLoad) {
-        try {
-          await getFollowers();
-          hasLoadedInitialFollowers = true;
-          renderView({
-            centerFocus: initialLoad,
-            preserveScroll: !initialLoad,
-            followAccountIfVisible: !initialLoad,
-          });
-        } catch (error) {
-          console.error("Follower refresh failed", error);
-        }
-      }
-
-      schedule();
-    }, msToNextMinute());
+      await fetchFollowers();
+      scheduleFetch();
+    }, msUntilNextFetch());
   }
+  scheduleFetch();
+}
 
-  schedule();
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function cityKey(city) { return `${city.city}, ${city.country}`; }
+function fmt(n) { return Number(n).toLocaleString(); }
+
+function findRank(value) {
+  let lo = 0, hi = populationData.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    populationData[mid].population < value ? lo = mid + 1 : hi = mid - 1;
+  }
+  return lo;
+}
+
+function render() {
+  if (!hasLoaded) return;
+  const index = findRank(followers);
+  const prev = populationData[index - 1] || null;
+  const next = populationData[index] || null;
+  const rank = index + 1;
+
+  // Summary panels
+  panelLastName.textContent = prev ? cityKey(prev) : "None yet";
+  panelLastPop.textContent  = prev ? fmt(prev.population) : "—";
+  panelFollowers.textContent = fmt(followers);
+  panelNextName.textContent = next ? cityKey(next) : "Top of the list!";
+  panelNextPop.textContent  = next ? fmt(next.population) : "—";
+
+  renderTable(index, rank);
+}
+
+function renderTable(index, followerRank) {
+  const focusIdx = focusedKey
+    ? populationData.findIndex(c => cityKey(c) === focusedKey)
+    : -1;
+
+  tableBody.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+
+  // Build rows: cities above (higher pop), follower row, cities below (lower pop)
+  const above = populationData.slice(index).reverse(); // higher pop, closest first
+  const below = populationData.slice(0, index).reverse(); // lower pop, closest first
+
+  above.forEach((city, i) => {
+    fragment.appendChild(makeRow(i + 1, cityKey(city), fmt(city.population), false, focusIdx === populationData.indexOf(city)));
+  });
+
+  const followerRow = makeRow(followerRank, "Silly Billy Show", fmt(followers), true, focusedKey === null);
+  followerRow.id = "follower-row";
+  fragment.appendChild(followerRow);
+
+  below.forEach((city, i) => {
+    const globalIdx = index - 1 - i;
+    fragment.appendChild(makeRow(followerRank + i + 1, cityKey(city), fmt(city.population), false, focusIdx === globalIdx));
+  });
+
+  tableBody.appendChild(fragment);
+
+  // Scroll to focused element
+  const target = focusedKey
+    ? tableBody.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)
+    : document.getElementById("follower-row");
+
+  if (target) {
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }
+}
+
+function makeRow(rank, name, value, isFollower, isFocused) {
+  const row = document.createElement("div");
+  row.className = "row" + (isFollower ? " row--follower" : "") + (isFocused && !isFollower ? " row--focused" : "");
+  if (!isFollower) row.dataset.key = name;
+
+  row.innerHTML = `
+    <span class="row-rank">${rank}</span>
+    <span class="row-name">${name}</span>
+    <span class="row-value">${value}</span>
+  `;
+  return row;
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+function setupSearch() {
+  searchInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); doSearch(); }
+    if (e.key === "Escape") clearResults();
+  });
+  searchButton.addEventListener("click", doSearch);
+  resetButton.addEventListener("click", () => {
+    focusedKey = null;
+    searchInput.value = "";
+    clearResults();
+    render();
+  });
+  document.addEventListener("click", e => {
+    if (!e.target.closest(".search-panel")) clearResults();
+  });
+}
+
+function doSearch() {
+  const q = searchInput.value.trim().toLowerCase();
+  if (!q) { clearResults(); return; }
+  const matches = searchableLocations.filter(e => e.keyLower.includes(q)).slice(0, 8);
+  renderResults(matches);
+}
+
+function renderResults(matches) {
+  searchResults.innerHTML = "";
+  if (!matches.length) { searchResults.hidden = true; return; }
+  matches.forEach(entry => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "search-result";
+    btn.textContent = entry.key;
+    btn.addEventListener("click", () => {
+      focusedKey = entry.key;
+      searchInput.value = entry.key;
+      clearResults();
+      render();
+    });
+    searchResults.appendChild(btn);
+  });
+  searchResults.hidden = false;
+}
+
+function clearResults() {
+  searchResults.innerHTML = "";
+  searchResults.hidden = true;
 }
 
 loadData();
