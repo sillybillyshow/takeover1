@@ -8,8 +8,8 @@ let followers = 0;
 let searchableLocations = [];
 let focusedKey = null;
 let hasLoaded = false;
-let flatList = [];            // ordered array of all rows including follower row
-let followerIndex = 0;        // position of follower row in flatList
+let flatList = [];
+let followerIndex = 0;
 
 // DOM refs
 const countdownEl   = document.getElementById("countdown");
@@ -33,7 +33,6 @@ async function loadData() {
   populationData = await res.json();
   populationData.sort((a, b) => a.population - b.population);
 
-  // Build search index once
   searchableLocations = populationData
     .slice()
     .reverse()
@@ -76,7 +75,7 @@ function writeCache(v) {
 
 async function fetchFollowers() {
   try {
-    const res = await fetch(GIST_URL);
+    const res = await fetch(`${GIST_URL}?t=${Date.now()}`);
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
     const v = Number(data.followers);
@@ -132,23 +131,19 @@ function buildFlatList() {
   const insertAt = findRank(followers);
   flatList = [];
 
-  // Cities with population >= followers (ranked above)
   const above = populationData.slice(insertAt).reverse();
   above.forEach((city, i) => {
     flatList.push({ type: 'city', city, rank: i + 1 });
   });
 
-  // Follower row
   followerIndex = flatList.length;
   flatList.push({ type: 'follower', rank: above.length + 1 });
 
-  // Cities with population < followers (ranked below)
   const below = populationData.slice(0, insertAt).reverse();
   below.forEach((city, i) => {
     flatList.push({ type: 'city', city, rank: above.length + 2 + i });
   });
 
-  // Spacer sets the full scroll height without rendering all rows
   spacer.style.height = `${flatList.length * ROW_HEIGHT}px`;
 }
 
