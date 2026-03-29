@@ -1,7 +1,7 @@
 const GIST_URL = "https://gist.githubusercontent.com/sillybillyshow/ae68c331d964ff293623a01ca1766256/raw/tiktok_stats.json";
 const FOLLOWER_CACHE_KEY = "sbs-followers-cache";
-const ROW_HEIGHT = 44;       // px — must match CSS
-const BUFFER = 10;            // rows to render above/below viewport
+const ROW_HEIGHT = 44;
+const BUFFER = 10;
 
 let populationData = [];
 let followers = 0;
@@ -12,19 +12,19 @@ let flatList = [];
 let followerIndex = 0;
 
 // DOM refs
-const countdownEl   = document.getElementById("countdown");
-const barEl         = document.getElementById("bar");
-const searchInput   = document.getElementById("location-search");
-const searchButton  = document.getElementById("search-button");
-const resetButton   = document.getElementById("reset-button");
-const searchResults = document.getElementById("search-results");
-const panelLastName = document.getElementById("panel-last-name");
-const panelLastPop  = document.getElementById("panel-last-pop");
-const panelFollowers= document.getElementById("panel-followers");
-const panelNextName = document.getElementById("panel-next-name");
-const panelNextPop  = document.getElementById("panel-next-pop");
-const scroller      = document.getElementById("table-body");
-const spacer        = document.getElementById("table-spacer");
+const countdownEl    = document.getElementById("countdown");
+const barEl          = document.getElementById("bar");
+const searchInput    = document.getElementById("location-search");
+const searchButton   = document.getElementById("search-button");
+const resetButton    = document.getElementById("reset-button");
+const searchResults  = document.getElementById("search-results");
+const panelLastName  = document.getElementById("panel-last-name");
+const panelLastPop   = document.getElementById("panel-last-pop");
+const panelFollowers = document.getElementById("panel-followers");
+const panelNextName  = document.getElementById("panel-next-name");
+const panelNextPop   = document.getElementById("panel-next-pop");
+const scroller       = document.getElementById("table-body");
+const spacer         = document.getElementById("table-spacer");
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ async function loadData() {
     hasLoaded = true;
     buildFlatList();
     renderPanels();
-    renderVirtualTable();
+    forceRenderVirtualTable();
     scrollToFollower("auto");
   }
 
@@ -87,7 +87,7 @@ async function fetchFollowers() {
       writeCache(v);
       buildFlatList();
       renderPanels();
-      renderVirtualTable();
+      forceRenderVirtualTable(); // always re-render on data change
       if (!wasLoaded) scrollToFollower("auto");
     }
   } catch (e) {
@@ -151,6 +151,13 @@ function buildFlatList() {
 
 let lastRenderedStart = -1;
 let lastRenderedEnd = -1;
+
+// Call this when data changes — bypasses the range equality check
+function forceRenderVirtualTable() {
+  lastRenderedStart = -1;
+  lastRenderedEnd = -1;
+  renderVirtualTable();
+}
 
 function renderVirtualTable() {
   const scrollTop = scroller.scrollTop;
@@ -287,7 +294,7 @@ function renderResults(matches) {
       focusedKey = entry.key;
       searchInput.value = entry.key;
       clearResults();
-      renderVirtualTable();
+      forceRenderVirtualTable();
       scrollToKey(entry.key);
     });
     searchResults.appendChild(btn);
