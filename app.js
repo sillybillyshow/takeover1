@@ -1,4 +1,6 @@
 const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev";
+const FOLLOWER_CACHE_KEY = "sbs-followers-cache";
+const IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 
 let populationData = [];
 let followers = 0;
@@ -6,6 +8,8 @@ let previousFollowers = 0;
 let focusedLocation = null;
 let selectedSuggestionIndex = -1;
 let searchableLocations = [];
+let lastActivityAt = Date.now();
+let hasLoadedInitialFollowers = false;
 
 const cardsContainer = document.getElementById("cards-container");
 const countdownEl = document.getElementById("countdown");
@@ -29,60 +33,103 @@ async function loadData() {
     .reverse()
     .map((city) => {
       const key = getLocationKey(city);
-      return { city, key, keyLower: key.toLowerCase() };
+      return {
+        city,
+        key,
+        keyLower: key.toLowerCase(),
+      };
     });
 
   setupSearch();
-  await getFollowers();
-  renderView({
-    centerFocus: true,
-    preserveScroll: false,
-    followAccountIfVisible: false,
-  });
+
+  const cachedFollowers = readFollowersCache();
+  if (cachedFollowers !== null) {
+    followers = cachedFollowers;
+    previousFollowers = cachedFollowers;
+    hasLoadedInitialFollowers = true;
+    renderView({
+      centerFocus: true,
+      preserveScroll: false,
+      followAccountIfVisible: false,
+    });
+  } else {
+    renderLoadingState();
+  }
+
   startClock();
+}
+
+function readFollowersCache() {
+  try {
+    const raw = localStorage.getItem(FOLLOWER_CACHE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    const value = Number(parsed.followers);
+    return Number.isFinite(value) ? value : null;
+  } catch (error) {
+    console.error("Failed to read follower cache", error);
+    return null;
+  }
+}
+
+function writeFollowersCache(value) {
+  try {
+    localStorage.setItem(
+      FOLLOWER_CACHE_KEY,
+      JSON.stringify({
+        followers: value,
+        savedAt: Date.now(),
+      })
+    );
+  } catch (error) {
+    console.error("Failed to write follower cache", error);
+  }
+}
+
+function renderLoadingState() {
+  countdownEl.textContent = "Follower count loading";
+  cardsContainer.innerHTML = "";
+  nextPlaceNameEl.textContent = "Loading...";
+  nextPlaceValueEl.textContent = "";
+  lastPlaceNameEl.textContent = "Loading...";
+  lastPlaceValueEl.textContent = "";
 }
 
 async function getFollowers() {
   previousFollowers = followers;
 
-  try {
-    const response = await fetch(workerURL, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
+  const response = await fetch(workerURL, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
 
-    if (!response.ok) {
-      throw new Error(`Follower request failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    followers = Number(data.followers);
-
-    if (!Number.isFinite(followers)) {
-      throw new Error("Worker response did not include a numeric followers value");
-    }
-  } catch (error) {
-    console.error("Follower fetch failed", error);
-    if (followers === 0) {
-      followers = 4258;
-      previousFollowers = 4258;
-    }
+  if (!response.ok) {
+    throw new Error(`Follower request failed: ${response.status}`);
   }
+
+  const data = await response.json();
+  const nextFollowers = Number(data.followers);
+
+  if (!Number.isFinite(nextFollowers)) {
+    throw new Error("Worker response did not include a numeric followers value");
+  }
+
+  followers = nextFollowers;
+  writeFollowersCache(followers);
 }
 
 function findRank(value) {
   let low = 0;
   let high = populationData.length - 1;
-
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
     if (populationData[mid].population < value) low = mid + 1;
     else high = mid - 1;
   }
-
   return low;
 }
 
@@ -138,7 +185,6 @@ function createCityCard(city, rank) {
   card.appendChild(rankLabel);
   card.appendChild(name);
   card.appendChild(population);
-
   return card;
 }
 
@@ -162,7 +208,6 @@ function createFollowerCard(rank) {
   followerCard.appendChild(rankLabel);
   followerCard.appendChild(name);
   followerCard.appendChild(population);
-
   return followerCard;
 }
 
@@ -219,15 +264,19 @@ function showSearchResults() {
 }
 
 function setupSearch() {
+  if (!searchInput || !searchButton || !resetButton || !searchResults) return;
+
   searchInput.addEventListener("keydown", (event) => {
     const results = Array.from(searchResults.querySelectorAll(".search-result"));
 
     if (event.key === "ArrowDown") {
-      if (searchResults.hidden) showSearchResults();
-      const refreshed = Array.from(searchResults.querySelectorAll(".search-result"));
-      if (!refreshed.length) return;
+      if (searchResults.hidden) {
+        showSearchResults();
+      }
+      const refreshedResults = Array.from(searchResults.querySelectorAll(".search-result"));
+      if (!refreshedResults.length) return;
       event.preventDefault();
-      selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, refreshed.length - 1);
+      selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, refreshedResults.length - 1);
       updateSuggestionSelection();
     }
 
@@ -264,6 +313,18 @@ function setupSearch() {
   });
 }
 
+function markActivity() {
+  lastActivityAt = Date.now();
+}
+
+function isUserActive() {
+  return Date.now() - lastActivityAt < IDLE_TIMEOUT_MS;
+}
+
+function shouldPollFollowers() {
+  return !document.hidden && isUserActive();
+}
+
 function isAccountVisible() {
   const followerCard = cardsContainer.querySelector('[data-location-key="followers"]');
   if (!followerCard) return false;
@@ -277,7 +338,11 @@ function isAccountVisible() {
 }
 
 function renderCards(options = {}) {
-  const { centerFocus = false, preserveScroll = false, followAccountIfVisible = false } = options;
+  const {
+    centerFocus = false,
+    preserveScroll = false,
+    followAccountIfVisible = false,
+  } = options;
   const currentScrollTop = preserveScroll ? cardsContainer.scrollTop : 0;
   const accountWasVisible = followAccountIfVisible ? isAccountVisible() : false;
   const index = findRank(followers);
@@ -298,7 +363,9 @@ function renderCards(options = {}) {
   });
 
   const focusedElement = getFocusedElement();
-  if (focusedElement) focusedElement.classList.add("focused-card");
+  if (focusedElement) {
+    focusedElement.classList.add("focused-card");
+  }
 
   if (preserveScroll) {
     cardsContainer.scrollTop = currentScrollTop;
@@ -307,12 +374,18 @@ function renderCards(options = {}) {
   if (accountWasVisible) {
     const followerCard = cardsContainer.querySelector('[data-location-key="followers"]');
     if (followerCard) {
-      followerCard.scrollIntoView({ behavior: "smooth", block: "center" });
+      followerCard.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     }
   } else if (!preserveScroll && centerFocus) {
     const target = focusedElement || cardsContainer.querySelector('[data-location-key="followers"]');
     if (target) {
-      target.scrollIntoView({ behavior: "auto", block: "center" });
+      target.scrollIntoView({
+        behavior: "auto",
+        block: "center",
+      });
     }
   }
 
@@ -329,11 +402,29 @@ function msToNextMinute() {
 }
 
 function startClock() {
+  ["pointerdown", "pointermove", "keydown", "scroll", "touchstart"].forEach((eventName) => {
+    window.addEventListener(eventName, markActivity, { passive: true });
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      markActivity();
+    }
+  });
+
   function updateTimer() {
     const now = new Date();
     const seconds = now.getUTCSeconds();
     const remain = seconds === 0 ? 0 : 60 - seconds;
-    countdownEl.textContent = `Next update in ${remain}s`;
+
+    if (!hasLoadedInitialFollowers) {
+      countdownEl.textContent = "Follower count loading";
+    } else if (shouldPollFollowers()) {
+      countdownEl.textContent = `Next update in ${remain}s`;
+    } else {
+      countdownEl.textContent = "Updates paused";
+    }
+
     barEl.style.width = `${(seconds / 60) * 100}%`;
   }
 
@@ -342,12 +433,22 @@ function startClock() {
 
   function schedule() {
     setTimeout(async () => {
-      await getFollowers();
-      renderView({
-        centerFocus: false,
-        preserveScroll: true,
-        followAccountIfVisible: true,
-      });
+      const initialLoad = !hasLoadedInitialFollowers;
+
+      if (shouldPollFollowers() || initialLoad) {
+        try {
+          await getFollowers();
+          hasLoadedInitialFollowers = true;
+          renderView({
+            centerFocus: initialLoad,
+            preserveScroll: !initialLoad,
+            followAccountIfVisible: !initialLoad,
+          });
+        } catch (error) {
+          console.error("Follower refresh failed", error);
+        }
+      }
+
       schedule();
     }, msToNextMinute());
   }
