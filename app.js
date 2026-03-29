@@ -1,34 +1,39 @@
 const GIST_URL = "https://gist.githubusercontent.com/sillybillyshow/ae68c331d964ff293623a01ca1766256/raw/tiktok_stats.json";
 const FOLLOWER_CACHE_KEY = "sbs-followers-cache";
+const ROW_HEIGHT = 44;       // px — must match CSS
+const BUFFER = 10;            // rows to render above/below viewport
 
 let populationData = [];
 let followers = 0;
 let searchableLocations = [];
 let focusedKey = null;
 let hasLoaded = false;
-let timerInterval = null;
+let flatList = [];            // ordered array of all rows including follower row
+let followerIndex = 0;        // position of follower row in flatList
 
 // DOM refs
-const countdownEl = document.getElementById("countdown");
-const barEl = document.getElementById("bar");
-const searchInput = document.getElementById("location-search");
-const searchButton = document.getElementById("search-button");
-const resetButton = document.getElementById("reset-button");
+const countdownEl   = document.getElementById("countdown");
+const barEl         = document.getElementById("bar");
+const searchInput   = document.getElementById("location-search");
+const searchButton  = document.getElementById("search-button");
+const resetButton   = document.getElementById("reset-button");
 const searchResults = document.getElementById("search-results");
 const panelLastName = document.getElementById("panel-last-name");
-const panelLastPop = document.getElementById("panel-last-pop");
-const panelFollowers = document.getElementById("panel-followers");
+const panelLastPop  = document.getElementById("panel-last-pop");
+const panelFollowers= document.getElementById("panel-followers");
 const panelNextName = document.getElementById("panel-next-name");
-const panelNextPop = document.getElementById("panel-next-pop");
-const tableBody = document.getElementById("table-body");
+const panelNextPop  = document.getElementById("panel-next-pop");
+const scroller      = document.getElementById("table-body");
+const spacer        = document.getElementById("table-spacer");
 
-// ── Data loading ─────────────────────────────────────────────────────────────
+// ── Data loading ──────────────────────────────────────────────────────────────
 
 async function loadData() {
-  const [popRes] = await Promise.all([fetch("populationdata.json")]);
-  populationData = await popRes.json();
+  const res = await fetch("populationdata.json");
+  populationData = await res.json();
   populationData.sort((a, b) => a.population - b.population);
 
+  // Build search index once
   searchableLocations = populationData
     .slice()
     .reverse()
@@ -40,14 +45,17 @@ async function loadData() {
   if (cached !== null) {
     followers = cached;
     hasLoaded = true;
-    render();
+    buildFlatList();
+    renderPanels();
+    renderVirtualTable();
+    scrollToFollower("auto");
   }
 
   await fetchFollowers();
   startClock();
 }
 
-// ── Followers ─────────────────────────────────────────────────────────────────
+// ── Cache ─────────────────────────────────────────────────────────────────────
 
 function readCache() {
   try {
@@ -64,6 +72,8 @@ function writeCache(v) {
   } catch {}
 }
 
+// ── Followers ─────────────────────────────────────────────────────────────────
+
 async function fetchFollowers() {
   try {
     const res = await fetch(GIST_URL);
@@ -72,10 +82,14 @@ async function fetchFollowers() {
     const v = Number(data.followers);
     if (!Number.isFinite(v)) throw new Error("bad value");
     if (v !== followers || !hasLoaded) {
+      const wasLoaded = hasLoaded;
       followers = v;
-      writeCache(v);
       hasLoaded = true;
-      render();
+      writeCache(v);
+      buildFlatList();
+      renderPanels();
+      renderVirtualTable();
+      if (!wasLoaded) scrollToFollower("auto");
     }
   } catch (e) {
     console.error("Follower fetch failed", e);
@@ -85,7 +99,6 @@ async function fetchFollowers() {
 // ── Clock ─────────────────────────────────────────────────────────────────────
 
 function msUntilNextFetch() {
-  // Fire at each minute + 10s (i.e. when clock shows :10)
   const now = new Date();
   const s = now.getUTCSeconds();
   const ms = now.getUTCMilliseconds();
@@ -94,21 +107,16 @@ function msUntilNextFetch() {
 }
 
 function startClock() {
-  // Countdown bar: counts 0→60 aligned to wall clock seconds
-  if (timerInterval) clearInterval(timerInterval);
-  timerInterval = setInterval(() => {
+  setInterval(() => {
     const now = new Date();
     const s = now.getUTCSeconds();
     const ms = now.getUTCMilliseconds();
-    // Time until next :10 mark
     const secondsUntil = s < 10 ? (10 - s) : (70 - s);
     const totalMs = secondsUntil * 1000 - ms;
-    const pct = 1 - totalMs / 60000;
-    barEl.style.width = `${Math.max(0, Math.min(1, pct)) * 100}%`;
+    barEl.style.width = `${Math.max(0, Math.min(1, 1 - totalMs / 60000)) * 100}%`;
     countdownEl.textContent = `Next update in ${Math.ceil(totalMs / 1000)}s`;
   }, 250);
 
-  // Schedule fetches at :10 past each minute
   function scheduleFetch() {
     setTimeout(async () => {
       await fetchFollowers();
@@ -118,7 +126,119 @@ function startClock() {
   scheduleFetch();
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
+// ── Flat list builder ─────────────────────────────────────────────────────────
+
+function buildFlatList() {
+  const insertAt = findRank(followers);
+  flatList = [];
+
+  // Cities with population >= followers (ranked above)
+  const above = populationData.slice(insertAt).reverse();
+  above.forEach((city, i) => {
+    flatList.push({ type: 'city', city, rank: i + 1 });
+  });
+
+  // Follower row
+  followerIndex = flatList.length;
+  flatList.push({ type: 'follower', rank: above.length + 1 });
+
+  // Cities with population < followers (ranked below)
+  const below = populationData.slice(0, insertAt).reverse();
+  below.forEach((city, i) => {
+    flatList.push({ type: 'city', city, rank: above.length + 2 + i });
+  });
+
+  // Spacer sets the full scroll height without rendering all rows
+  spacer.style.height = `${flatList.length * ROW_HEIGHT}px`;
+}
+
+// ── Virtual scroll renderer ───────────────────────────────────────────────────
+
+let lastRenderedStart = -1;
+let lastRenderedEnd = -1;
+
+function renderVirtualTable() {
+  const scrollTop = scroller.scrollTop;
+  const viewportH = scroller.clientHeight;
+
+  const visibleStart = Math.floor(scrollTop / ROW_HEIGHT);
+  const visibleEnd   = Math.ceil((scrollTop + viewportH) / ROW_HEIGHT);
+
+  const start = Math.max(0, visibleStart - BUFFER);
+  const end   = Math.min(flatList.length - 1, visibleEnd + BUFFER);
+
+  if (start === lastRenderedStart && end === lastRenderedEnd) return;
+  lastRenderedStart = start;
+  lastRenderedEnd   = end;
+
+  const existing = scroller.querySelectorAll(".row");
+  existing.forEach(el => el.remove());
+
+  const fragment = document.createDocumentFragment();
+  for (let i = start; i <= end; i++) {
+    fragment.appendChild(makeRow(i, flatList[i]));
+  }
+  scroller.appendChild(fragment);
+}
+
+function makeRow(index, entry) {
+  const el = document.createElement("div");
+  el.className = "row";
+  el.style.transform = `translateY(${index * ROW_HEIGHT}px)`;
+
+  if (entry.type === 'follower') {
+    el.classList.add("row--follower");
+    el.id = "follower-row";
+    el.innerHTML = `
+      <span class="row-rank">${entry.rank}</span>
+      <span class="row-name">Silly Billy Show</span>
+      <span class="row-value">${fmt(followers)}</span>
+    `;
+  } else {
+    const key = cityKey(entry.city);
+    el.dataset.key = key;
+    if (focusedKey === key) el.classList.add("row--focused");
+    el.innerHTML = `
+      <span class="row-rank">${entry.rank}</span>
+      <span class="row-name">${key}</span>
+      <span class="row-value">${fmt(entry.city.population)}</span>
+    `;
+  }
+
+  return el;
+}
+
+// ── Scroll helpers ────────────────────────────────────────────────────────────
+
+function scrollToFollower(behavior = "smooth") {
+  const targetScrollTop = followerIndex * ROW_HEIGHT - scroller.clientHeight / 2 + ROW_HEIGHT / 2;
+  scroller.scrollTo({ top: Math.max(0, targetScrollTop), behavior });
+  requestAnimationFrame(renderVirtualTable);
+}
+
+function scrollToKey(key) {
+  const idx = flatList.findIndex(e => e.type === 'city' && cityKey(e.city) === key);
+  if (idx === -1) return;
+  const targetScrollTop = idx * ROW_HEIGHT - scroller.clientHeight / 2 + ROW_HEIGHT / 2;
+  scroller.scrollTo({ top: Math.max(0, targetScrollTop), behavior: "smooth" });
+  requestAnimationFrame(renderVirtualTable);
+}
+
+// ── Panels ────────────────────────────────────────────────────────────────────
+
+function renderPanels() {
+  const insertAt = findRank(followers);
+  const prev = populationData[insertAt - 1] || null;
+  const next = populationData[insertAt] || null;
+
+  panelLastName.textContent  = prev ? cityKey(prev) : "None yet";
+  panelLastPop.textContent   = prev ? fmt(prev.population) : "—";
+  panelFollowers.textContent = fmt(followers);
+  panelNextName.textContent  = next ? cityKey(next) : "Top of the list!";
+  panelNextPop.textContent   = next ? fmt(next.population) : "—";
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function cityKey(city) { return `${city.city}, ${city.country}`; }
 function fmt(n) { return Number(n).toLocaleString(); }
@@ -132,78 +252,11 @@ function findRank(value) {
   return lo;
 }
 
-function render() {
-  if (!hasLoaded) return;
-  const index = findRank(followers);
-  const prev = populationData[index - 1] || null;
-  const next = populationData[index] || null;
-  const rank = index + 1;
-
-  // Summary panels
-  panelLastName.textContent = prev ? cityKey(prev) : "None yet";
-  panelLastPop.textContent  = prev ? fmt(prev.population) : "—";
-  panelFollowers.textContent = fmt(followers);
-  panelNextName.textContent = next ? cityKey(next) : "Top of the list!";
-  panelNextPop.textContent  = next ? fmt(next.population) : "—";
-
-  renderTable(index, rank);
-}
-
-function renderTable(index, followerRank) {
-  const focusIdx = focusedKey
-    ? populationData.findIndex(c => cityKey(c) === focusedKey)
-    : -1;
-
-  tableBody.innerHTML = "";
-  const fragment = document.createDocumentFragment();
-
-  // Build rows: cities above (higher pop), follower row, cities below (lower pop)
-  const above = populationData.slice(index).reverse(); // higher pop, closest first
-  const below = populationData.slice(0, index).reverse(); // lower pop, closest first
-
-  above.forEach((city, i) => {
-    fragment.appendChild(makeRow(i + 1, cityKey(city), fmt(city.population), false, focusIdx === populationData.indexOf(city)));
-  });
-
-  const followerRow = makeRow(followerRank, "Silly Billy Show", fmt(followers), true, focusedKey === null);
-  followerRow.id = "follower-row";
-  fragment.appendChild(followerRow);
-
-  below.forEach((city, i) => {
-    const globalIdx = index - 1 - i;
-    fragment.appendChild(makeRow(followerRank + i + 1, cityKey(city), fmt(city.population), false, focusIdx === globalIdx));
-  });
-
-  tableBody.appendChild(fragment);
-
-  // Scroll to focused element
-  const target = focusedKey
-    ? tableBody.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)
-    : document.getElementById("follower-row");
-
-  if (target) {
-    requestAnimationFrame(() => {
-      target.scrollIntoView({ block: "center", behavior: "smooth" });
-    });
-  }
-}
-
-function makeRow(rank, name, value, isFollower, isFocused) {
-  const row = document.createElement("div");
-  row.className = "row" + (isFollower ? " row--follower" : "") + (isFocused && !isFollower ? " row--focused" : "");
-  if (!isFollower) row.dataset.key = name;
-
-  row.innerHTML = `
-    <span class="row-rank">${rank}</span>
-    <span class="row-name">${name}</span>
-    <span class="row-value">${value}</span>
-  `;
-  return row;
-}
-
 // ── Search ────────────────────────────────────────────────────────────────────
 
 function setupSearch() {
+  scroller.addEventListener("scroll", () => requestAnimationFrame(renderVirtualTable), { passive: true });
+
   searchInput.addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); doSearch(); }
     if (e.key === "Escape") clearResults();
@@ -213,7 +266,7 @@ function setupSearch() {
     focusedKey = null;
     searchInput.value = "";
     clearResults();
-    render();
+    scrollToFollower("smooth");
   });
   document.addEventListener("click", e => {
     if (!e.target.closest(".search-panel")) clearResults();
@@ -239,7 +292,8 @@ function renderResults(matches) {
       focusedKey = entry.key;
       searchInput.value = entry.key;
       clearResults();
-      render();
+      renderVirtualTable();
+      scrollToKey(entry.key);
     });
     searchResults.appendChild(btn);
   });
