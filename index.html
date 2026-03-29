@@ -12,7 +12,6 @@
 
     :root {
       --red: #ff0050;
-      --red-dark: #cc0040;
       --red-glow: rgba(255,0,80,0.18);
       --bg: #0d0d0d;
       --surface: #161616;
@@ -23,6 +22,7 @@
       --font-display: 'Bebas Neue', sans-serif;
       --font-body: 'DM Sans', sans-serif;
       --radius: 12px;
+      --row-height: 44px; /* must match ROW_HEIGHT in app.js */
     }
 
     html, body {
@@ -63,9 +63,7 @@
       line-height: 1;
     }
 
-    .header h1 span {
-      color: var(--red);
-    }
+    .header h1 span { color: var(--red); }
 
     .header-sub {
       font-size: 0.85rem;
@@ -76,11 +74,7 @@
     }
 
     /* ── Timer ── */
-    .timer-block {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+    .timer-block { display: flex; flex-direction: column; gap: 8px; }
 
     .timer-label {
       display: flex;
@@ -89,11 +83,6 @@
       color: var(--muted);
       letter-spacing: 0.05em;
       text-transform: uppercase;
-    }
-
-    #countdown {
-      font-size: 0.8rem;
-      color: var(--muted);
     }
 
     .bar-track {
@@ -128,6 +117,7 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
+      min-width: 0;
     }
 
     .panel--center {
@@ -144,44 +134,34 @@
       font-weight: 500;
     }
 
-    .panel--center .panel-label {
-      color: rgba(255,255,255,0.7);
-    }
+    .panel--center .panel-label { color: rgba(255,255,255,0.7); }
 
     .panel-name {
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       font-weight: 600;
       line-height: 1.3;
       color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    .panel--center .panel-name {
-      color: #fff;
-      font-size: 1rem;
-    }
+    .panel--center .panel-name { color: #fff; }
 
     .panel-value {
       font-family: var(--font-display);
-      font-size: 1.6rem;
+      font-size: 1.5rem;
       letter-spacing: 0.02em;
       color: var(--red);
       line-height: 1;
     }
 
-    .panel--center .panel-value {
-      color: #fff;
-      font-size: 2rem;
-    }
+    .panel--center .panel-value { color: #fff; font-size: 2rem; }
 
     /* ── Search ── */
-    .search-panel {
-      position: relative;
-    }
+    .search-panel { position: relative; }
 
-    .search-row {
-      display: flex;
-      gap: 8px;
-    }
+    .search-row { display: flex; gap: 8px; }
 
     #location-search {
       flex: 1;
@@ -194,10 +174,10 @@
       color: var(--text);
       outline: none;
       transition: border-color 0.15s;
+      min-width: 0;
     }
 
     #location-search::placeholder { color: var(--muted); }
-
     #location-search:focus {
       border-color: var(--red);
       box-shadow: 0 0 0 3px var(--red-glow);
@@ -211,24 +191,14 @@
       font-size: 0.9rem;
       font-weight: 600;
       cursor: pointer;
+      white-space: nowrap;
       transition: opacity 0.15s, transform 0.1s;
     }
 
     .btn:active { transform: scale(0.97); }
-
-    .btn--primary {
-      background: var(--red);
-      color: #fff;
-    }
-
+    .btn--primary { background: var(--red); color: #fff; }
     .btn--primary:hover { opacity: 0.88; }
-
-    .btn--ghost {
-      background: var(--surface2);
-      color: var(--muted);
-      border: 1px solid var(--border);
-    }
-
+    .btn--ghost { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
     .btn--ghost:hover { color: var(--text); }
 
     #search-results {
@@ -258,10 +228,7 @@
       transition: background 0.1s;
     }
 
-    .search-result:hover, .search-result.active {
-      background: var(--surface2);
-      color: var(--red);
-    }
+    .search-result:hover { background: var(--surface2); color: var(--red); }
 
     /* ── Table ── */
     .table-wrap {
@@ -284,8 +251,10 @@
       font-weight: 500;
     }
 
+    /* Scroller is the visible viewport; spacer sets the total scroll height */
     #table-body {
-      max-height: 420px;
+      position: relative;
+      height: 440px;        /* fixed viewport height */
       overflow-y: auto;
       scrollbar-width: thin;
       scrollbar-color: var(--surface2) transparent;
@@ -294,25 +263,35 @@
     #table-body::-webkit-scrollbar { width: 4px; }
     #table-body::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 4px; }
 
+    /* Spacer inflates scroll height to represent all rows */
+    #table-spacer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1px;
+      pointer-events: none;
+    }
+
+    /* All rows are absolutely positioned via transform */
     .row {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--row-height);
       display: grid;
       grid-template-columns: 56px 1fr auto;
       gap: 12px;
       align-items: center;
-      padding: 10px 18px;
+      padding: 0 18px;
       border-bottom: 1px solid var(--border);
-      transition: background 0.1s;
     }
 
-    .row:last-child { border-bottom: none; }
     .row:hover { background: var(--surface2); }
 
     .row--follower {
       background: var(--red) !important;
-      position: sticky;
-      top: 0;
-      bottom: 0;
-      z-index: 2;
+      z-index: 1;
       box-shadow: 0 0 24px var(--red-glow);
     }
 
@@ -335,7 +314,7 @@
     }
 
     .row-name {
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       color: var(--text);
       white-space: nowrap;
       overflow: hidden;
@@ -343,7 +322,7 @@
     }
 
     .row-value {
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       font-variant-numeric: tabular-nums;
       color: var(--muted);
       white-space: nowrap;
@@ -366,6 +345,7 @@
       .panel--center { order: -1; }
       .search-row { flex-wrap: wrap; }
       .btn { height: 44px; }
+      #table-body { height: 360px; }
     }
   </style>
 </head>
@@ -420,7 +400,9 @@
         <span>Place</span>
         <span>Population</span>
       </div>
-      <div id="table-body"></div>
+      <div id="table-body">
+        <div id="table-spacer"></div>
+      </div>
     </div>
 
     <footer class="page-footer">
