@@ -1,4 +1,4 @@
-const workerURL = "https://tiktok-follower-api.sillybillyshowemail.workers.dev";
+const GIST_URL = "https://gist.githubusercontent.com/sillybillyshow/ae68c331d964ff293623a01ca1766256/raw/tiktok_stats.json";
 const FOLLOWER_CACHE_KEY = "sbs-followers-cache";
 const IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -99,23 +99,17 @@ function renderLoadingState() {
 async function getFollowers() {
   previousFollowers = followers;
 
-  const response = await fetch(workerURL, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
+  const response = await fetch(GIST_URL);
 
   if (!response.ok) {
-    throw new Error(`Follower request failed: ${response.status}`);
+    throw new Error(`Gist request failed: ${response.status}`);
   }
 
   const data = await response.json();
   const nextFollowers = Number(data.followers);
 
   if (!Number.isFinite(nextFollowers)) {
-    throw new Error("Worker response did not include a numeric followers value");
+    throw new Error("Gist response did not include a numeric followers value");
   }
 
   followers = nextFollowers;
