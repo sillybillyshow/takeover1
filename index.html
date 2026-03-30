@@ -4,30 +4,48 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Silly Billy Show Takeover</title>
+
+  <!-- Preconnect to Google Fonts to reduce connection latency -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <!-- Bebas Neue is used for display headings and large numbers;
+       DM Sans is used for all body text and UI labels -->
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
   <style>
+    /* Reset box model for all elements to avoid unexpected sizing behaviour */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
+      /* Brand red used throughout for accents, highlights, and the follower row */
       --red: #ff0050;
       --red-glow: rgba(255,0,80,0.18);
+
+      /* Dark background palette */
       --bg: #0d0d0d;
       --surface: #161616;
       --surface2: #1e1e1e;
+
+      /* Subtle border colour for cards and dividers */
       --border: rgba(255,255,255,0.07);
+
+      /* Text colours */
       --text: #f0f0f0;
       --muted: #888;
+
+      /* Typography */
       --font-display: 'Bebas Neue', sans-serif;
       --font-body: 'DM Sans', sans-serif;
+
+      /* Shared border radius for cards and inputs */
       --radius: 12px;
-      --row-height: 44px; /* must match ROW_HEIGHT in app.js */
+
+      /* Row height in pixels — this value must match ROW_HEIGHT in app.js exactly */
+      --row-height: 44px;
     }
 
-    html, body {
-      height: 100%;
-    }
+    html, body { height: 100%; }
 
     body {
       font-family: var(--font-body);
@@ -38,9 +56,12 @@
       align-items: center;
       padding: 24px 16px 40px;
       min-height: 100vh;
+
+      /* Subtle radial red glow behind the top of the page to reinforce the brand colour */
       background-image: radial-gradient(ellipse 80% 40% at 50% -10%, rgba(255,0,80,0.12) 0%, transparent 70%);
     }
 
+    /* Constrain all page content to a readable max width */
     .page {
       width: 100%;
       max-width: 800px;
@@ -50,6 +71,7 @@
     }
 
     /* ── Header ── */
+
     .header {
       text-align: center;
       padding-top: 8px;
@@ -57,12 +79,14 @@
 
     .header h1 {
       font-family: var(--font-display);
+      /* clamp() scales the font size fluidly between mobile and desktop viewports */
       font-size: clamp(2.4rem, 7vw, 4rem);
       letter-spacing: 0.04em;
       color: var(--text);
       line-height: 1;
     }
 
+    /* The word "Takeover" is highlighted in brand red */
     .header h1 span { color: var(--red); }
 
     .header-sub {
@@ -74,6 +98,7 @@
     }
 
     /* ── Timer ── */
+
     .timer-block { display: flex; flex-direction: column; gap: 8px; }
 
     .timer-label {
@@ -85,6 +110,7 @@
       text-transform: uppercase;
     }
 
+    /* The track is the full-width grey background of the progress bar */
     .bar-track {
       width: 100%;
       height: 3px;
@@ -93,16 +119,21 @@
       overflow: hidden;
     }
 
+    /* The bar fills from left to right as the countdown progresses;
+       width is set dynamically by app.js every 250ms */
     #bar {
       height: 100%;
       width: 0%;
       background: var(--red);
       border-radius: 999px;
       transition: width 0.25s linear;
+      /* Glow effect reinforces the live/active feeling of the bar */
       box-shadow: 0 0 8px var(--red);
     }
 
     /* ── Summary panels ── */
+
+    /* Three equal-width panels side by side */
     .summary {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
@@ -117,9 +148,11 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
+      /* Prevent long city names from overflowing the card */
       min-width: 0;
     }
 
+    /* The centre panel uses the brand red to draw attention to the follower count */
     .panel--center {
       background: var(--red);
       border-color: var(--red);
@@ -134,6 +167,7 @@
       font-weight: 500;
     }
 
+    /* Override label colour for the red centre panel */
     .panel--center .panel-label { color: rgba(255,255,255,0.7); }
 
     .panel-name {
@@ -148,6 +182,7 @@
 
     .panel--center .panel-name { color: #fff; }
 
+    /* Large display font for the population/follower numbers in each panel */
     .panel-value {
       font-family: var(--font-display);
       font-size: 1.5rem;
@@ -156,9 +191,12 @@
       line-height: 1;
     }
 
+    /* The centre panel's follower count is slightly larger to emphasise it */
     .panel--center .panel-value { color: #fff; font-size: 2rem; }
 
     /* ── Search ── */
+
+    /* Position relative so the results dropdown can be absolutely positioned below it */
     .search-panel { position: relative; }
 
     .search-row { display: flex; gap: 8px; }
@@ -178,11 +216,14 @@
     }
 
     #location-search::placeholder { color: var(--muted); }
+
+    /* Highlight the input with the brand red and a soft glow when focused */
     #location-search:focus {
       border-color: var(--red);
       box-shadow: 0 0 0 3px var(--red-glow);
     }
 
+    /* Shared base styles for both action buttons */
     .btn {
       border: none;
       border-radius: var(--radius);
@@ -195,12 +236,18 @@
       transition: opacity 0.15s, transform 0.1s;
     }
 
+    /* Slight scale-down on click for tactile feedback */
     .btn:active { transform: scale(0.97); }
+
+    /* Primary (Search) button uses the brand red */
     .btn--primary { background: var(--red); color: #fff; }
     .btn--primary:hover { opacity: 0.88; }
+
+    /* Ghost (Reset) button is a subtle secondary action */
     .btn--ghost { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
     .btn--ghost:hover { color: var(--text); }
 
+    /* Dropdown results list positioned directly below the search row */
     #search-results {
       position: absolute;
       top: calc(100% + 6px);
@@ -231,6 +278,7 @@
     .search-result:hover { background: var(--surface2); color: var(--red); }
 
     /* ── Table ── */
+
     .table-wrap {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -238,6 +286,7 @@
       overflow: hidden;
     }
 
+    /* Sticky column header row above the scrollable table body */
     .table-header {
       display: grid;
       grid-template-columns: 56px 1fr auto;
@@ -251,10 +300,10 @@
       font-weight: 500;
     }
 
-    /* Scroller is the visible viewport; spacer sets the total scroll height */
+    /* The scroll viewport — fixed height so virtual scrolling works correctly */
     #table-body {
       position: relative;
-      height: 440px;        /* fixed viewport height */
+      height: 440px;
       overflow-y: auto;
       scrollbar-width: thin;
       scrollbar-color: var(--surface2) transparent;
@@ -263,7 +312,8 @@
     #table-body::-webkit-scrollbar { width: 4px; }
     #table-body::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 4px; }
 
-    /* Spacer inflates scroll height to represent all rows */
+    /* The spacer's height is set by app.js to equal (total row count × ROW_HEIGHT),
+       giving the scrollbar accurate proportions without rendering all rows */
     #table-spacer {
       position: absolute;
       top: 0;
@@ -272,7 +322,8 @@
       pointer-events: none;
     }
 
-    /* All rows are absolutely positioned via transform */
+    /* Each row is absolutely positioned using translateY so only visible rows
+       need to exist in the DOM at any time */
     .row {
       position: absolute;
       top: 0;
@@ -289,12 +340,14 @@
 
     .row:hover { background: var(--surface2); }
 
+    /* The follower row is styled with the brand red to make it stand out in the list */
     .row--follower {
       background: var(--red) !important;
       z-index: 1;
       box-shadow: 0 0 24px var(--red-glow);
     }
 
+    /* Ensure all text within the follower row is white and bold */
     .row--follower .row-rank,
     .row--follower .row-name,
     .row--follower .row-value {
@@ -302,11 +355,13 @@
       font-weight: 700;
     }
 
+    /* The row the user has navigated to via search receives a subtle red highlight */
     .row--focused {
       outline: 1px solid rgba(255,0,80,0.4);
       background: rgba(255,0,80,0.05);
     }
 
+    /* Rank number uses tabular numerals so digits stay aligned across rows */
     .row-rank {
       font-size: 0.8rem;
       color: var(--muted);
@@ -321,6 +376,7 @@
       text-overflow: ellipsis;
     }
 
+    /* Population numbers are right-aligned and use tabular numerals for column consistency */
     .row-value {
       font-size: 0.88rem;
       font-variant-numeric: tabular-nums;
@@ -330,6 +386,7 @@
     }
 
     /* ── Footer ── */
+
     .page-footer {
       text-align: center;
       font-size: 0.78rem;
@@ -340,11 +397,18 @@
     .page-footer a:hover { color: var(--text); }
 
     /* ── Responsive ── */
+
     @media (max-width: 560px) {
+      /* Stack the three summary panels vertically on small screens,
+         with the follower panel pulled to the top */
       .summary { grid-template-columns: 1fr; }
       .panel--center { order: -1; }
+
+      /* Allow the search buttons to wrap onto a second line if needed */
       .search-row { flex-wrap: wrap; }
       .btn { height: 44px; }
+
+      /* Reduce the table viewport height on mobile to leave room for other content */
       #table-body { height: 360px; }
     }
   </style>
@@ -352,64 +416,86 @@
 <body>
   <div class="page">
 
+    <!-- Page title and subtitle -->
     <header class="header">
       <h1>Silly Billy Show <span>Takeover</span></h1>
       <p class="header-sub">Live TikTok follower ranking vs world cities</p>
     </header>
 
+    <!-- Countdown timer and progress bar — updated every 250ms by app.js -->
     <div class="timer-block">
       <div class="timer-label">
         <span>Live update</span>
         <span id="countdown">Loading...</span>
       </div>
       <div class="bar-track">
+        <!-- Width is driven by app.js based on time remaining until the next fetch -->
         <div id="bar"></div>
       </div>
     </div>
 
+    <!-- Three summary panels showing the place just overtaken, the follower count,
+         and the next place to overtake -->
     <section class="summary">
       <div class="panel">
         <span class="panel-label">Just overtaken</span>
+        <!-- Populated by renderPanels() in app.js -->
         <span class="panel-name" id="panel-last-name">—</span>
         <span class="panel-value" id="panel-last-pop">—</span>
       </div>
+
+      <!-- Centre panel highlights the Silly Billy Show follower count -->
       <div class="panel panel--center">
         <span class="panel-label">Silly Billy Show</span>
         <span class="panel-name">TikTok Followers</span>
+        <!-- Updated by renderPanels() whenever a new follower count is fetched -->
         <span class="panel-value" id="panel-followers">—</span>
       </div>
+
       <div class="panel">
         <span class="panel-label">Next to overtake</span>
+        <!-- Populated by renderPanels() in app.js -->
         <span class="panel-name" id="panel-next-name">—</span>
         <span class="panel-value" id="panel-next-pop">—</span>
       </div>
     </section>
 
+    <!-- Search panel — filters the population dataset and scrolls the table to the result -->
     <div class="search-panel">
       <div class="search-row">
         <input id="location-search" type="text" placeholder="Search for a city…" autocomplete="off">
         <button id="search-button" class="btn btn--primary" type="button">Search</button>
+        <!-- Reset clears the search and returns the table to the follower row -->
         <button id="reset-button" class="btn btn--ghost" type="button">Reset</button>
       </div>
+      <!-- Results dropdown — hidden by default, shown by renderResults() in app.js -->
       <div id="search-results" hidden></div>
     </div>
 
+    <!-- Virtual scroll table — only the visible rows are in the DOM at any time -->
     <div class="table-wrap">
       <div class="table-header">
         <span>#</span>
         <span>Place</span>
         <span>Population</span>
       </div>
+
+      <!-- The scroll viewport — its height is fixed and rows are absolutely positioned inside it -->
       <div id="table-body">
+        <!-- The spacer's height is set by app.js to represent the full list,
+             giving the scrollbar the correct proportions for 40,000+ rows -->
         <div id="table-spacer"></div>
       </div>
     </div>
 
+    <!-- Data attribution footer -->
     <footer class="page-footer">
       Data: <a href="https://simplemaps.com/data/world-cities" target="_blank" rel="noreferrer">Simplemaps World Cities Database</a>
     </footer>
 
   </div>
+
+  <!-- app.js is loaded at the end of the body so all DOM elements are available when it executes -->
   <script src="app.js"></script>
 </body>
 </html>
