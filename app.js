@@ -46,7 +46,7 @@ async function loadData() {
     hasLoaded = true;
     buildFlatList();
     renderPanels();
-    forceRenderVirtualTable();
+    drawRows();
     scrollToFollower("auto");
   }
 
@@ -87,7 +87,7 @@ async function fetchFollowers() {
       writeCache(v);
       buildFlatList();
       renderPanels();
-      forceRenderVirtualTable(); // always re-render on data change
+      drawRows(); // unconditional full redraw
       if (!wasLoaded) scrollToFollower("auto");
     }
   } catch (e) {
@@ -149,30 +149,39 @@ function buildFlatList() {
 
 // ── Virtual scroll renderer ───────────────────────────────────────────────────
 
-let lastRenderedStart = -1;
-let lastRenderedEnd = -1;
-
-// Call this when data changes — bypasses the range equality check
-function forceRenderVirtualTable() {
-  lastRenderedStart = -1;
-  lastRenderedEnd = -1;
-  renderVirtualTable();
-}
+// Called on scroll — skips redraw if visible range hasn't changed
+let lastStart = -1;
+let lastEnd = -1;
 
 function renderVirtualTable() {
+  const { start, end } = getVisibleRange();
+  if (start === lastStart && end === lastEnd) return;
+  lastStart = start;
+  lastEnd = end;
+  paintRows(start, end);
+}
+
+// Called when data changes — always redraws regardless of scroll position
+function drawRows() {
+  const { start, end } = getVisibleRange();
+  lastStart = start;
+  lastEnd = end;
+  paintRows(start, end);
+}
+
+function getVisibleRange() {
   const scrollTop = scroller.scrollTop;
   const viewportH = scroller.clientHeight;
-
   const visibleStart = Math.floor(scrollTop / ROW_HEIGHT);
   const visibleEnd   = Math.ceil((scrollTop + viewportH) / ROW_HEIGHT);
+  return {
+    start: Math.max(0, visibleStart - BUFFER),
+    end:   Math.min(flatList.length - 1, visibleEnd + BUFFER),
+  };
+}
 
-  const start = Math.max(0, visibleStart - BUFFER);
-  const end   = Math.min(flatList.length - 1, visibleEnd + BUFFER);
-
-  if (start === lastRenderedStart && end === lastRenderedEnd) return;
-  lastRenderedStart = start;
-  lastRenderedEnd   = end;
-
+function paintRows(start, end) {
+  // Remove only existing row elements, leave spacer intact
   const existing = scroller.querySelectorAll(".row");
   existing.forEach(el => el.remove());
 
@@ -294,7 +303,7 @@ function renderResults(matches) {
       focusedKey = entry.key;
       searchInput.value = entry.key;
       clearResults();
-      forceRenderVirtualTable();
+      drawRows();
       scrollToKey(entry.key);
     });
     searchResults.appendChild(btn);
