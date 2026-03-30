@@ -13,6 +13,9 @@
        DM Sans is used for all body text and UI labels -->
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 
+  <!-- Three.js r128 loaded from CDN — used by globe.js for WebGL rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
   <style>
     /* Reset box model for all elements to avoid unexpected sizing behaviour */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -129,6 +132,72 @@
       transition: width 0.25s linear;
       /* Glow effect reinforces the live/active feeling of the bar */
       box-shadow: 0 0 8px var(--red);
+    }
+
+    /* ── Globe ── */
+
+    /* Outer wrapper card — matches the style of other surface cards on the page */
+    .globe-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* The globe canvas fills this container — Three.js appends its canvas here */
+    #globe-container {
+      width: 100%;
+      /* Fixed aspect ratio — tall enough to show the full globe with breathing room */
+      height: 420px;
+      cursor: grab;
+      display: block;
+    }
+
+    /* Cursor changes to grabbing while the user is dragging the globe */
+    #globe-container:active { cursor: grabbing; }
+
+    /* Legend overlay positioned in the bottom-left corner of the globe */
+    .globe-legend {
+      position: absolute;
+      bottom: 14px;
+      left: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    /* Coloured dot matching the city state colours used in globe.js */
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .legend-dot--overtaken { background: #ff0050; }
+    .legend-dot--next      { background: #ffffff; }
+    .legend-dot--future    { background: #334466; }
+
+    /* Drag hint label in the top-right corner of the globe */
+    .globe-hint {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      pointer-events: none;
     }
 
     /* ── Summary panels ── */
@@ -408,7 +477,8 @@
       .search-row { flex-wrap: wrap; }
       .btn { height: 44px; }
 
-      /* Reduce the table viewport height on mobile to leave room for other content */
+      /* Reduce the globe and table viewport height on mobile */
+      #globe-container { height: 300px; }
       #table-body { height: 360px; }
     }
   </style>
@@ -431,6 +501,31 @@
       <div class="bar-track">
         <!-- Width is driven by app.js based on time remaining until the next fetch -->
         <div id="bar"></div>
+      </div>
+    </div>
+
+    <!-- Globe visualisation — Three.js canvas is injected into globe-container by globe.js.
+         Cities glow red when overtaken, white for the next target, and dim blue when not yet reached. -->
+    <div class="globe-wrap">
+      <div id="globe-container"></div>
+
+      <!-- Drag interaction hint shown in the top-right corner -->
+      <span class="globe-hint">Drag to rotate</span>
+
+      <!-- Colour key explaining what each dot state means -->
+      <div class="globe-legend">
+        <div class="legend-item">
+          <div class="legend-dot legend-dot--overtaken"></div>
+          <span>Overtaken</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot legend-dot--next"></div>
+          <span>Next target</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot legend-dot--future"></div>
+          <span>Not yet reached</span>
+        </div>
       </div>
     </div>
 
@@ -483,7 +578,7 @@
       <!-- The scroll viewport — its height is fixed and rows are absolutely positioned inside it -->
       <div id="table-body">
         <!-- The spacer's height is set by app.js to represent the full list,
-             giving the scrollbar the correct proportions for 40,000+ rows -->
+             giving the scrollbar the correct proportions for 48,000+ rows -->
         <div id="table-spacer"></div>
       </div>
     </div>
@@ -495,7 +590,7 @@
 
   </div>
 
-  <!-- app.js is loaded at the end of the body so all DOM elements are available when it executes -->
-  <script src="app.js"></script>
+  <!-- app.js is loaded as a module so it can dynamically import globe.js -->
+  <script type="module" src="app.js"></script>
 </body>
 </html>
