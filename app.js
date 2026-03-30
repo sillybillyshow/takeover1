@@ -33,6 +33,9 @@ let flatList = [];
 // The index of the follower row within flatList — used for scrolling to it
 let followerIndex = 0;
 
+// Handle returned by initGlobe — exposes update() and destroy()
+let globeHandle = null;
+
 // ── DOM references ────────────────────────────────────────────────────────────
 
 const countdownEl    = document.getElementById("countdown");
@@ -53,6 +56,9 @@ const scroller = document.getElementById("table-body");
 // The invisible element whose height represents the total scroll height of all rows
 const spacer   = document.getElementById("table-spacer");
 
+// The container element that Three.js will mount the globe canvas into
+const globeContainer = document.getElementById("globe-container");
+
 // ── Data loading ──────────────────────────────────────────────────────────────
 
 async function loadData() {
@@ -70,8 +76,14 @@ async function loadData() {
     .reverse()
     .map(city => ({ city, key: cityKey(city), keyLower: cityKey(city).toLowerCase() }));
 
-  // Attach all search-related event listeners now that the data is ready
   setupSearch();
+
+  // Initialise the globe now that population data is available.
+  // The globe module handles its own WebGL setup and animation loop.
+  if (globeContainer) {
+    const { initGlobe } = await import('./globe.js');
+    globeHandle = initGlobe(globeContainer, populationData);
+  }
 
   // If a follower count was cached from a previous visit, use it immediately so the
   // page renders with content rather than showing a blank state while the Gist loads
@@ -84,6 +96,8 @@ async function loadData() {
     drawRows();
     // Instantly jump to the follower row position without a smooth scroll animation
     scrollToFollower("auto");
+    // Feed the cached count to the globe so it renders in the correct state immediately
+    if (globeHandle) globeHandle.update(followers);
   }
 
   // Fetch the live follower count from the Gist, then start the polling clock
@@ -139,6 +153,9 @@ async function fetchFollowers() {
 
       // Force a full redraw of the visible rows so the table reflects the new data
       drawRows();
+
+      // Notify the globe of the new follower count so it recolours city dots
+      if (globeHandle) globeHandle.update(followers);
 
       // On the very first load, scroll to centre the follower row in the viewport
       if (!wasLoaded) scrollToFollower("auto");
