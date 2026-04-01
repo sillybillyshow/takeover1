@@ -1,26 +1,25 @@
-```js
 // globe.js — WebGL globe renderer using Three.js r128
-// All cities rendered as instanced flat disks in a single GPU draw call.
+// All cities rendered as tiny instanced flat disks in a single GPU draw call.
 // World map drawn from TopoJSON onto a canvas texture.
-// All dots are green, with the next target in white.
+// Green = overtaken (population below follower count), black = not yet overtaken.
 // Supports drag-to-rotate, scroll-to-zoom, and pinch-to-zoom on mobile.
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const GLOBE_RADIUS     = 1.0;
 const DOT_ALTITUDE     = 0.010;
-const DOT_SIZE_SMALL   = 0.0028;
-const DOT_SIZE_MEDIUM  = 0.0036;
-const DOT_SIZE_LARGE   = 0.0048;
+const DOT_SIZE_SMALL   = 0.0024;
+const DOT_SIZE_MEDIUM  = 0.0030;
+const DOT_SIZE_LARGE   = 0.0038;
 
 // City state colours
-const COLOR_CITY       = new THREE.Color(0x00e676);
-const COLOR_NEXT       = new THREE.Color(0xffffff);
+const COLOR_OVERTAKEN  = new THREE.Color(0x00e676);
+const COLOR_FUTURE     = new THREE.Color(0x050505);
 
 const AUTO_ROTATE_SPEED = 0.0007;
-const PULSE_DURATION    = 120;
-const ZOOM_MIN          = 1.3;
-const ZOOM_MAX          = 3.5;
+const PULSE_DURATION    = 120;   // frames
+const ZOOM_MIN          = 1.3;   // closest camera Z
+const ZOOM_MAX          = 3.5;   // furthest camera Z
 
 // Natural Earth TopoJSON — 110m resolution, compact, reliable CDN
 const TOPO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
@@ -31,7 +30,7 @@ let scene, camera, renderer, globeGroup, cityMesh;
 let animationId      = null;
 let populationData   = [];
 let currentFollowers = 0;
-let pulsingIndices   = new Map();
+let pulsingIndices   = new Map();  // index → framesRemaining
 let colorArray, dummy;
 
 // Rotation state
@@ -42,26 +41,34 @@ let autoRotate    = true;
 let resumeTimer   = null;
 
 // Pinch state — keyed by pointerId
-let touches          = new Map();
-let lastPinchDist    = null;
+let touches       = new Map();
+let lastPinchDist = null;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+// Initialise the globe. Returns { update(followers), destroy() }.
+// Must be awaited — the map texture fetch is async.
 export async function initGlobe(container, populationArr) {
   populationData = populationArr;
 
   const W = container.clientWidth;
   const H = container.clientHeight;
 
+  // ── Scene & camera ─────────────────────────────────────────────────────────
+
   scene  = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, W / H, 0.01, 100);
   camera.position.z = 2.6;
+
+  // ── Renderer ───────────────────────────────────────────────────────────────
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(W, H);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setClearColor(0x000000, 0);
   container.appendChild(renderer.domElement);
+
+  // ── Lighting ───────────────────────────────────────────────────────────────
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
@@ -73,10 +80,16 @@ export async function initGlobe(container, populationArr) {
   fill.position.set(-5, -2, -3);
   scene.add(fill);
 
+  // ── Globe group — all rotating objects are children of this ───────────────
+
   globeGroup = new THREE.Group();
   scene.add(globeGroup);
 
+  // ── World map texture (async) ──────────────────────────────────────────────
+
   const mapTexture = await buildMapTexture();
+
+  // ── Globe sphere ───────────────────────────────────────────────────────────
 
   const sphereGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 96, 96);
   const sphereMat = new THREE.MeshPhongMaterial({
@@ -85,6 +98,8 @@ export async function initGlobe(container, populationArr) {
     specular:  new THREE.Color(0x0a1a33),
   });
   globeGroup.add(new THREE.Mesh(sphereGeo, sphereMat));
+
+  // ── Atmosphere halo — back-face sphere just outside the globe ─────────────
 
   const atmoGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 1.06, 64, 64);
   const atmoMat = new THREE.MeshPhongMaterial({
@@ -95,7 +110,12 @@ export async function initGlobe(container, populationArr) {
   });
   scene.add(new THREE.Mesh(atmoGeo, atmoMat));
 
+  // ── City dots ──────────────────────────────────────────────────────────────
+
   buildCityMesh();
+
+  // ── Interaction & resize ───────────────────────────────────────────────────
+
   bindInteraction(container);
 
   new ResizeObserver(() => {
@@ -106,16 +126,20 @@ export async function initGlobe(container, populationArr) {
     camera.updateProjectionMatrix();
   }).observe(container);
 
+  // ── Animation loop ─────────────────────────────────────────────────────────
+
   startLoop();
 
   return { update: updateFollowers, destroy };
 }
 
+// Called by app.js on every follower count change
 export function updateFollowers(next) {
   if (!cityMesh || next === currentFollowers) return;
   const prev = currentFollowers;
   currentFollowers = next;
 
+  // Mark newly overtaken cities for pulse animation
   populationData.forEach((city, i) => {
     if (city.population >= prev && city.population < next) {
       pulsingIndices.set(i, PULSE_DURATION);
@@ -135,6 +159,7 @@ async function buildMapTexture() {
   canvas.height = TH;
   const ctx = canvas.getContext("2d");
 
+  // Deep ocean background
   ctx.fillStyle = "#060e1a";
   ctx.fillRect(0, 0, TW, TH);
 
@@ -143,23 +168,27 @@ async function buildMapTexture() {
     const topo = await res.json();
     const geo  = topoToGeo(topo, topo.objects.countries);
 
+    // Equirectangular projection: lng→x, lat→y
     const project = ([lng, lat]) => [
       ((lng + 180) / 360) * TW,
       ((90 - lat)  / 180) * TH,
     ];
 
+    // Land fills
     ctx.fillStyle = "rgba(18, 38, 68, 0.95)";
     geo.features.forEach(f => {
       drawFeature(ctx, f, project);
       ctx.fill();
     });
 
+    // Country outlines
     ctx.strokeStyle = "rgba(80, 150, 230, 0.45)";
     ctx.lineWidth   = 0.9;
     geo.features.forEach(f => {
       drawFeature(ctx, f, project);
       ctx.stroke();
     });
+
   } catch (err) {
     console.warn("Globe map fetch failed, using plain surface", err);
     ctx.fillStyle = "#091422";
@@ -171,9 +200,9 @@ async function buildMapTexture() {
   return tex;
 }
 
+// Draw a GeoJSON Feature (Polygon or MultiPolygon) onto a 2D canvas context
 function drawFeature(ctx, feature, project) {
   if (!feature.geometry) return;
-
   ctx.beginPath();
   const { type, coordinates } = feature.geometry;
   const rings = type === "Polygon"
@@ -192,6 +221,7 @@ function drawFeature(ctx, feature, project) {
   });
 }
 
+// Minimal TopoJSON → GeoJSON converter — handles delta-encoded arcs + transform
 function topoToGeo(topo, obj) {
   const { scale, translate } = topo.transform;
 
@@ -217,7 +247,6 @@ function topoToGeo(topo, obj) {
         properties: {},
       };
     }
-
     if (geom.type === "MultiPolygon") {
       return {
         type: "Feature",
@@ -228,7 +257,6 @@ function topoToGeo(topo, obj) {
         properties: {},
       };
     }
-
     return null;
   };
 
@@ -243,14 +271,14 @@ function topoToGeo(topo, obj) {
 function buildCityMesh() {
   const count = populationData.length;
 
+  // Flat hexagonal disk — renders as a circle at small sizes, very cheap
   const geo = new THREE.CircleGeometry(1, 7);
 
+  // MeshBasicMaterial ignores lighting so dot colours stay crisp
   const mat = new THREE.MeshBasicMaterial({
     vertexColors: true,
     side:         THREE.DoubleSide,
     depthWrite:   false,
-    transparent:  true,
-    opacity:      0.95,
   });
 
   cityMesh = new THREE.InstancedMesh(geo, mat, count);
@@ -269,6 +297,7 @@ function buildCityMesh() {
   globeGroup.add(cityMesh);
 }
 
+// Convert lat/lng → 3D position on the sphere, oriented outward, sized to `sz`
 function placeInstance(i, lat, lng, sz) {
   const phi   = (90 - lat)  * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
@@ -286,16 +315,15 @@ function placeInstance(i, lat, lng, sz) {
   cityMesh.setMatrixAt(i, dummy.matrix);
 }
 
+// Recolour all city instances to reflect current follower count
 function recolour() {
   if (!cityMesh) return;
 
-  const next = findNextIdx(currentFollowers);
-
   populationData.forEach((city, i) => {
-    if (i === next) {
-      COLOR_NEXT.toArray(colorArray, i * 3);
+    if (city.population < currentFollowers) {
+      COLOR_OVERTAKEN.toArray(colorArray, i * 3);
     } else {
-      COLOR_CITY.toArray(colorArray, i * 3);
+      COLOR_FUTURE.toArray(colorArray, i * 3);
     }
   });
 
@@ -323,13 +351,13 @@ function startLoop() {
       pulsingIndices.forEach((left, idx) => {
         const t = left / PULSE_DURATION;
         const p = Math.abs(Math.sin(t * Math.PI * 5));
-        pulseColor.setRGB(0.0, 0.85 + p * 0.15, 0.35 + p * 0.2);
+        pulseColor.setRGB(0.0, 0.82 + p * 0.18, 0.22 + p * 0.18);
         pulseColor.toArray(colorArray, idx * 3);
 
         const rem = left - 1;
         if (rem <= 0) {
           pulsingIndices.delete(idx);
-          COLOR_CITY.toArray(colorArray, idx * 3);
+          COLOR_OVERTAKEN.toArray(colorArray, idx * 3);
         } else {
           pulsingIndices.set(idx, rem);
         }
@@ -376,7 +404,6 @@ function bindInteraction(el) {
     }
 
     if (!isDragging) return;
-
     const dx = e.clientX - prevPointer.x;
     const dy = e.clientY - prevPointer.y;
     rotY += dx * 0.005;
@@ -444,22 +471,8 @@ function sizeFor(pop) {
   return DOT_SIZE_SMALL;
 }
 
-function findNextIdx(followers) {
-  let lo = 0;
-  let hi = populationData.length - 1;
-
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (populationData[mid].population < followers) lo = mid + 1;
-    else hi = mid - 1;
-  }
-
-  return lo < populationData.length ? lo : -1;
-}
-
 function destroy() {
   if (animationId) cancelAnimationFrame(animationId);
   if (resumeTimer) clearTimeout(resumeTimer);
   renderer.dispose();
 }
-```
