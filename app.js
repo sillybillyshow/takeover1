@@ -4,7 +4,7 @@ const GIST_URL = "https://gist.githubusercontent.com/sillybillyshow/ae68c331d964
 // The localStorage key used to persist the last known follower count across page loads
 const FOLLOWER_CACHE_KEY = "sbs-followers-cache";
 
-// The fixed pixel height of each row in the virtual scroll table — must match the CSS --row-height variable
+// The fixed pixel height of each row in the virtual scroll table — must match --row-height in CSS
 const ROW_HEIGHT = 44;
 
 // The number of rows to render above and below the visible viewport as a scroll buffer
@@ -12,28 +12,15 @@ const BUFFER = 10;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-// The full sorted array of city/population objects loaded from populationdata.json
-let populationData = [];
-
-// The current TikTok follower count
-let followers = 0;
-
-// A pre-processed array of city entries with lowercase keys for efficient search filtering
+let populationData   = [];
+let followers        = 0;
 let searchableLocations = [];
+let focusedKey       = null;
+let hasLoaded        = false;
+let flatList         = [];
+let followerIndex    = 0;
 
-// The city key the user has navigated to via search, or null if showing the follower row
-let focusedKey = null;
-
-// Whether the initial follower count has been successfully loaded
-let hasLoaded = false;
-
-// The flat ordered array representing every row in the table, including the follower row
-let flatList = [];
-
-// The index of the follower row within flatList — used for scrolling to it
-let followerIndex = 0;
-
-// Handle returned by initGlobe — exposes update() and destroy()
+// Handle returned by initGlobe — exposes update(followers) and destroy()
 let globeHandle = null;
 
 // ── DOM references ────────────────────────────────────────────────────────────
@@ -49,28 +36,20 @@ const panelLastPop   = document.getElementById("panel-last-pop");
 const panelFollowers = document.getElementById("panel-followers");
 const panelNextName  = document.getElementById("panel-next-name");
 const panelNextPop   = document.getElementById("panel-next-pop");
-
-// The scrollable container that acts as the virtual scroll viewport
-const scroller = document.getElementById("table-body");
-
-// The invisible element whose height represents the total scroll height of all rows
-const spacer   = document.getElementById("table-spacer");
-
-// The container element that Three.js will mount the globe canvas into
+const scroller       = document.getElementById("table-body");
+const spacer         = document.getElementById("table-spacer");
 const globeContainer = document.getElementById("globe-container");
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 
 async function loadData() {
-  // Fetch the population dataset from the local JSON file
+  // Fetch and sort the population dataset ascending so binary search works correctly
   const res = await fetch("populationdata.json");
   populationData = await res.json();
-
-  // Sort cities by population ascending so binary search and ranking work correctly
   populationData.sort((a, b) => a.population - b.population);
 
-  // Build the search index once at load time — reversing so largest cities appear first
-  // in search results, and pre-lowercasing keys to avoid doing it on every keystroke
+  // Build the search index once — reversed so largest cities appear first in results,
+  // keys pre-lowercased to avoid doing it on every keystroke
   searchableLocations = populationData
     .slice()
     .reverse()
@@ -78,15 +57,17 @@ async function loadData() {
 
   setupSearch();
 
-  // Initialise the globe now that population data is available.
-  // The globe module handles its own WebGL setup and animation loop.
+  // Initialise the globe — must be awaited because it fetches the map texture
   if (globeContainer) {
-    const { initGlobe } = await import('./globe.js');
-    globeHandle = initGlobe(globeContainer, populationData);
+    try {
+      const { initGlobe } = await import('./globe.js');
+      globeHandle = await initGlobe(globeContainer, populationData);
+    } catch (e) {
+      console.error("Globe failed to initialise", e);
+    }
   }
 
-  // If a follower count was cached from a previous visit, use it immediately so the
-  // page renders with content rather than showing a blank state while the Gist loads
+  // Render immediately from cache if available so the page isn't blank on return visits
   const cached = readCache();
   if (cached !== null) {
     followers = cached;
@@ -94,13 +75,12 @@ async function loadData() {
     buildFlatList();
     renderPanels();
     drawRows();
-    // Instantly jump to the follower row position without a smooth scroll animation
     scrollToFollower("auto");
-    // Feed the cached count to the globe so it renders in the correct state immediately
+    // Feed the cached count to the globe so it starts in the correct colour state
     if (globeHandle) globeHandle.update(followers);
   }
 
-  // Fetch the live follower count from the Gist, then start the polling clock
+  // Fetch the live count then start the polling clock
   await fetchFollowers();
   startClock();
 }
@@ -111,7 +91,6 @@ function readCache() {
   try {
     const raw = localStorage.getItem(FOLLOWER_CACHE_KEY);
     if (!raw) return null;
-    // Parse the stored value and validate it is a finite number before using it
     const v = Number(JSON.parse(raw).followers);
     return Number.isFinite(v) ? v : null;
   } catch { return null; }
@@ -119,7 +98,6 @@ function readCache() {
 
 function writeCache(v) {
   try {
-    // Persist the latest follower count to localStorage so it's available on the next page load
     localStorage.setItem(FOLLOWER_CACHE_KEY, JSON.stringify({ followers: v }));
   } catch {}
 }
@@ -128,36 +106,23 @@ function writeCache(v) {
 
 async function fetchFollowers() {
   try {
-    // Append a timestamp query parameter to bust GitHub's CDN cache and ensure
-    // we always receive the latest version of the file from origin
+    // Cache-bust with a timestamp so GitHub's CDN always returns the latest value
     const res = await fetch(`${GIST_URL}?t=${Date.now()}`);
     if (!res.ok) throw new Error(res.status);
-
     const data = await res.json();
     const v = Number(data.followers);
-
-    // Reject any response that doesn't contain a valid numeric follower count
     if (!Number.isFinite(v)) throw new Error("bad value");
 
-    // Only update the UI if the follower count has actually changed, or if this
-    // is the very first successful load (hasLoaded is false)
     if (v !== followers || !hasLoaded) {
       const wasLoaded = hasLoaded;
-      followers = v;
-      hasLoaded = true;
+      followers  = v;
+      hasLoaded  = true;
       writeCache(v);
-
-      // Rebuild the flat list since the follower row may have moved position
       buildFlatList();
       renderPanels();
-
-      // Force a full redraw of the visible rows so the table reflects the new data
       drawRows();
-
-      // Notify the globe of the new follower count so it recolours city dots
+      // Notify the globe so it recolours dots to match the new count
       if (globeHandle) globeHandle.update(followers);
-
-      // On the very first load, scroll to centre the follower row in the viewport
       if (!wasLoaded) scrollToFollower("auto");
     }
   } catch (e) {
@@ -168,35 +133,28 @@ async function fetchFollowers() {
 // ── Clock ─────────────────────────────────────────────────────────────────────
 
 function msUntilNextFetch() {
+  // Fire at each :00 and :30 boundary — gives the Worker's :00 write time to propagate
   const now = new Date();
-  const s = now.getUTCSeconds();
-  const ms = now.getUTCMilliseconds();
-
-  // Calculate milliseconds until the next 30-second boundary (:00 or :30)
-  // The Worker writes to the Gist at :00, so fetching at :00 and :30 gives
-  // the Gist time to propagate while still catching updates as quickly as possible
-  const secondsUntilNext = s < 30 ? (30 - s) : (60 - s);
-  return secondsUntilNext * 1000 - ms;
+  const s   = now.getUTCSeconds();
+  const ms  = now.getUTCMilliseconds();
+  const secondsUntil = s < 30 ? (30 - s) : (60 - s);
+  return secondsUntil * 1000 - ms;
 }
 
 function startClock() {
-  // Update the progress bar and countdown label four times per second for a smooth animation
+  // Update the countdown label and bar four times per second for smooth animation
   setInterval(() => {
-    const now = new Date();
-    const s = now.getUTCSeconds();
-    const ms = now.getUTCMilliseconds();
-
-    // Calculate how many milliseconds remain until the next :00 or :30 boundary
-    const secondsUntilNext = s < 30 ? (30 - s) : (60 - s);
-    const totalMs = secondsUntilNext * 1000 - ms;
-
-    // Express remaining time as a fraction of 30 seconds and fill the bar accordingly
+    const now  = new Date();
+    const s    = now.getUTCSeconds();
+    const ms   = now.getUTCMilliseconds();
+    const sUntil = s < 30 ? (30 - s) : (60 - s);
+    const totalMs = sUntil * 1000 - ms;
     barEl.style.width = `${Math.max(0, Math.min(1, 1 - totalMs / 30000)) * 100}%`;
     countdownEl.textContent = `Next update in ${Math.ceil(totalMs / 1000)}s`;
   }, 250);
 
-  // Schedule the next fetch to fire precisely at the next :00 or :30 wall-clock boundary,
-  // then reschedule itself so it always aligns to the clock rather than drifting over time
+  // Schedule fetches precisely at the next wall-clock :00 or :30, then reschedule
+  // so timing never drifts regardless of how long each fetch takes
   function scheduleFetch() {
     setTimeout(async () => {
       await fetchFollowers();
@@ -209,92 +167,69 @@ function startClock() {
 // ── Flat list builder ─────────────────────────────────────────────────────────
 
 function buildFlatList() {
-  // Find the insertion index — the number of cities with population less than the follower count
   const insertAt = findRank(followers);
   flatList = [];
 
-  // Cities ranked above the follower count (higher population) — reversed so the closest
-  // city to the follower count appears immediately above the follower row
+  // Cities with population >= followers go above — reversed so the nearest is first
   const above = populationData.slice(insertAt).reverse();
-  above.forEach((city, i) => {
-    flatList.push({ type: 'city', city, rank: i + 1 });
-  });
+  above.forEach((city, i) => flatList.push({ type: 'city', city, rank: i + 1 }));
 
-  // Record the follower row's index before pushing it, so we can scroll to it later
+  // Record the follower row index before pushing it
   followerIndex = flatList.length;
   flatList.push({ type: 'follower', rank: above.length + 1 });
 
-  // Cities ranked below the follower count (lower population) — reversed so the closest
-  // city to the follower count appears immediately below the follower row
+  // Cities with population < followers go below — reversed so the nearest is first
   const below = populationData.slice(0, insertAt).reverse();
-  below.forEach((city, i) => {
-    flatList.push({ type: 'city', city, rank: above.length + 2 + i });
-  });
+  below.forEach((city, i) => flatList.push({ type: 'city', city, rank: above.length + 2 + i }));
 
-  // Set the spacer height to represent the full list height without rendering every row —
-  // this gives the scrollbar the correct proportions for the complete dataset
+  // Spacer height = total rows × row height — gives the scrollbar correct proportions
+  // without rendering all 48k rows as DOM elements
   spacer.style.height = `${flatList.length * ROW_HEIGHT}px`;
 }
 
 // ── Virtual scroll renderer ───────────────────────────────────────────────────
 
-// Track the last rendered row range to avoid unnecessary DOM operations on scroll
 let lastStart = -1;
-let lastEnd = -1;
+let lastEnd   = -1;
 
+// Called on scroll — skips work if the visible range hasn't changed
 function renderVirtualTable() {
-  // Determine which rows are currently in or near the viewport
-  const { start, end } = getVisibleRange();
-
-  // If the visible range hasn't changed since the last render, skip the DOM update entirely
+  const { start, end } = visibleRange();
   if (start === lastStart && end === lastEnd) return;
   lastStart = start;
-  lastEnd = end;
+  lastEnd   = end;
   paintRows(start, end);
 }
 
+// Called when data changes — always repaints even if scroll position is unchanged
 function drawRows() {
-  // Always perform a full redraw regardless of whether the visible range has changed —
-  // used when the underlying data changes and the existing DOM rows may be stale
-  const { start, end } = getVisibleRange();
+  const { start, end } = visibleRange();
   lastStart = start;
-  lastEnd = end;
+  lastEnd   = end;
   paintRows(start, end);
 }
 
-function getVisibleRange() {
-  const scrollTop = scroller.scrollTop;
-  const viewportH = scroller.clientHeight;
-
-  // Calculate the first and last row indices that fall within the current viewport
-  const visibleStart = Math.floor(scrollTop / ROW_HEIGHT);
-  const visibleEnd   = Math.ceil((scrollTop + viewportH) / ROW_HEIGHT);
-
-  // Expand the range by the buffer amount so rows are ready before the user scrolls to them
+function visibleRange() {
+  const top    = scroller.scrollTop;
+  const height = scroller.clientHeight;
   return {
-    start: Math.max(0, visibleStart - BUFFER),
-    end:   Math.min(flatList.length - 1, visibleEnd + BUFFER),
+    start: Math.max(0,                  Math.floor(top / ROW_HEIGHT)              - BUFFER),
+    end:   Math.min(flatList.length - 1, Math.ceil((top + height) / ROW_HEIGHT)   + BUFFER),
   };
 }
 
 function paintRows(start, end) {
-  // Remove only the rendered row elements — the spacer must remain untouched
+  // Remove existing row elements but leave the spacer in place
   scroller.querySelectorAll(".row").forEach(el => el.remove());
-
-  // Build all rows in a document fragment to minimise DOM reflows
-  const fragment = document.createDocumentFragment();
-  for (let i = start; i <= end; i++) {
-    fragment.appendChild(makeRow(i, flatList[i]));
-  }
-  scroller.appendChild(fragment);
+  const frag = document.createDocumentFragment();
+  for (let i = start; i <= end; i++) frag.appendChild(makeRow(i, flatList[i]));
+  scroller.appendChild(frag);
 }
 
 function makeRow(index, entry) {
   const el = document.createElement("div");
   el.className = "row";
-
-  // Position the row absolutely using a CSS transform so it appears at the correct
-  // vertical offset within the scroll container without affecting document flow
+  // Absolute positioning via transform — keeps all rows in the same stacking context
   el.style.transform = `translateY(${index * ROW_HEIGHT}px)`;
 
   if (entry.type === 'follower') {
@@ -303,43 +238,32 @@ function makeRow(index, entry) {
     el.innerHTML = `
       <span class="row-rank">${entry.rank}</span>
       <span class="row-name">Silly Billy Show</span>
-      <span class="row-value">${fmt(followers)}</span>
-    `;
+      <span class="row-value">${fmt(followers)}</span>`;
   } else {
     const key = cityKey(entry.city);
     el.dataset.key = key;
-
-    // Highlight this row if the user has navigated to it via search
     if (focusedKey === key) el.classList.add("row--focused");
     el.innerHTML = `
       <span class="row-rank">${entry.rank}</span>
       <span class="row-name">${key}</span>
-      <span class="row-value">${fmt(entry.city.population)}</span>
-    `;
+      <span class="row-value">${fmt(entry.city.population)}</span>`;
   }
-
   return el;
 }
 
 // ── Scroll helpers ────────────────────────────────────────────────────────────
 
 function scrollToFollower(behavior = "smooth") {
-  // Calculate the scroll position that places the follower row in the centre of the viewport
-  const targetScrollTop = followerIndex * ROW_HEIGHT - scroller.clientHeight / 2 + ROW_HEIGHT / 2;
-  scroller.scrollTo({ top: Math.max(0, targetScrollTop), behavior });
-
-  // Trigger a render pass on the next animation frame to ensure the correct rows are painted
+  const top = followerIndex * ROW_HEIGHT - scroller.clientHeight / 2 + ROW_HEIGHT / 2;
+  scroller.scrollTo({ top: Math.max(0, top), behavior });
   requestAnimationFrame(renderVirtualTable);
 }
 
 function scrollToKey(key) {
-  // Find the flat list index of the city matching the given key
   const idx = flatList.findIndex(e => e.type === 'city' && cityKey(e.city) === key);
   if (idx === -1) return;
-
-  // Scroll so the target row is centred in the viewport
-  const targetScrollTop = idx * ROW_HEIGHT - scroller.clientHeight / 2 + ROW_HEIGHT / 2;
-  scroller.scrollTo({ top: Math.max(0, targetScrollTop), behavior: "smooth" });
+  const top = idx * ROW_HEIGHT - scroller.clientHeight / 2 + ROW_HEIGHT / 2;
+  scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   requestAnimationFrame(renderVirtualTable);
 }
 
@@ -347,12 +271,8 @@ function scrollToKey(key) {
 
 function renderPanels() {
   const insertAt = findRank(followers);
-
-  // The city immediately below the follower count is the most recently overtaken place
   const prev = populationData[insertAt - 1] || null;
-
-  // The city immediately above the follower count is the next place to overtake
-  const next = populationData[insertAt] || null;
+  const next = populationData[insertAt]     || null;
 
   panelLastName.textContent  = prev ? cityKey(prev) : "None yet";
   panelLastPop.textContent   = prev ? fmt(prev.population) : "—";
@@ -363,15 +283,11 @@ function renderPanels() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Produce a consistent display key for a city used as both a label and a lookup identifier
 function cityKey(city) { return `${city.city}, ${city.country}`; }
-
-// Format a number with locale-appropriate thousands separators
 function fmt(n) { return Number(n).toLocaleString(); }
 
 function findRank(value) {
-  // Binary search to find how many cities have a population strictly less than value —
-  // this is the insertion index and doubles as the follower count's rank offset
+  // Binary search: returns the number of cities with population < value
   let lo = 0, hi = populationData.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
@@ -383,28 +299,23 @@ function findRank(value) {
 // ── Search ────────────────────────────────────────────────────────────────────
 
 function setupSearch() {
-  // Re-render visible rows on every scroll event, throttled to animation frames
-  // to avoid firing more often than the browser can paint
+  // Re-render only the visible rows on scroll, throttled to animation frames
   scroller.addEventListener("scroll", () => requestAnimationFrame(renderVirtualTable), { passive: true });
 
   searchInput.addEventListener("keydown", e => {
-    // Trigger a search when the user presses Enter in the search field
-    if (e.key === "Enter") { e.preventDefault(); doSearch(); }
-    // Dismiss the results dropdown when the user presses Escape
+    if (e.key === "Enter")  { e.preventDefault(); doSearch(); }
     if (e.key === "Escape") clearResults();
   });
 
   searchButton.addEventListener("click", doSearch);
 
   resetButton.addEventListener("click", () => {
-    // Clear the focused location and return the viewport to the follower row
     focusedKey = null;
     searchInput.value = "";
     clearResults();
     scrollToFollower("smooth");
   });
 
-  // Dismiss the results dropdown when the user clicks anywhere outside the search panel
   document.addEventListener("click", e => {
     if (!e.target.closest(".search-panel")) clearResults();
   });
@@ -413,33 +324,26 @@ function setupSearch() {
 function doSearch() {
   const q = searchInput.value.trim().toLowerCase();
   if (!q) { clearResults(); return; }
-
-  // Filter the pre-built search index and return the top 8 matches
-  const matches = searchableLocations.filter(e => e.keyLower.includes(q)).slice(0, 8);
-  renderResults(matches);
+  renderResults(searchableLocations.filter(e => e.keyLower.includes(q)).slice(0, 8));
 }
 
 function renderResults(matches) {
   searchResults.innerHTML = "";
   if (!matches.length) { searchResults.hidden = true; return; }
-
   matches.forEach(entry => {
     const btn = document.createElement("button");
-    btn.type = "button";
+    btn.type      = "button";
     btn.className = "search-result";
     btn.textContent = entry.key;
     btn.addEventListener("click", () => {
-      // Set the focused key and scroll the table to that city's position
       focusedKey = entry.key;
       searchInput.value = entry.key;
       clearResults();
-      // Force a redraw so the focused highlight is applied before the scroll animation
-      drawRows();
+      drawRows();          // apply focus highlight before scroll
       scrollToKey(entry.key);
     });
     searchResults.appendChild(btn);
   });
-
   searchResults.hidden = false;
 }
 
@@ -448,5 +352,4 @@ function clearResults() {
   searchResults.hidden = true;
 }
 
-// Kick off the data load as soon as the script executes
 loadData();
