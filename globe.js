@@ -7,7 +7,8 @@
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const GLOBE_RADIUS     = 1.0;
-const DOT_ALTITUDE     = 0.010;  // how far dots sit above the sphere surface
+const DOT_ALTITUDE     = 0.010;  // base altitude above the sphere surface
+const DOT_ALTITUDE_POP = 0.006;  // extra lift for highlighted dots so they sit above dark markers
 const DOT_SIZE_SMALL   = 0.006;
 const DOT_SIZE_MEDIUM  = 0.010;
 const DOT_SIZE_LARGE   = 0.018;
@@ -284,10 +285,10 @@ function buildCityMesh() {
 }
 
 // Convert lat/lng → 3D position on the sphere, oriented outward, sized to `sz`
-function placeInstance(i, lat, lng, sz) {
+function placeInstance(i, lat, lng, sz, altitude = DOT_ALTITUDE) {
   const phi   = (90 - lat)  * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
-  const r     = GLOBE_RADIUS + DOT_ALTITUDE;
+  const r     = GLOBE_RADIUS + altitude;
 
   dummy.position.set(
     -r * Math.sin(phi) * Math.cos(theta),
@@ -310,17 +311,17 @@ function recolour() {
   populationData.forEach((city, i) => {
     const base = sizeFor(city.population);
     if (city.population < currentFollowers) {
-      // Overtaken — vivid green, scaled up so they clearly sit above the dark dots
+      // Overtaken — vivid green, noticeably larger, and lifted slightly higher so they read above future dots
       c.copy(COLOR_OVERTAKEN);
-      placeInstance(i, city.lat, city.lng, base * 2.0);
+      placeInstance(i, city.lat, city.lng, base * 2.8, DOT_ALTITUDE + DOT_ALTITUDE_POP);
     } else if (i === next) {
-      // Next target — white, largest of all to draw the eye
+      // Next target — brightest and highest marker on the globe
       c.copy(COLOR_NEXT);
-      placeInstance(i, city.lat, city.lng, base * 2.8);
+      placeInstance(i, city.lat, city.lng, base * 3.4, DOT_ALTITUDE + DOT_ALTITUDE_POP * 1.5);
     } else {
-      // Future — near-black, small, unobtrusive
+      // Future — smaller and darker so overtaken markers dominate visually
       c.copy(COLOR_FUTURE);
-      placeInstance(i, city.lat, city.lng, base);
+      placeInstance(i, city.lat, city.lng, base * 0.7);
     }
     c.toArray(colorArray, i * 3);
   });
