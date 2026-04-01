@@ -1,51 +1,48 @@
-```js
 // globe.js — WebGL globe renderer using Three.js r128
-// All cities are rendered as smaller green points on a standard dark-blue globe.
-// The next target remains white, but every other city is green.
+// All cities rendered as instanced flat disks in a single GPU draw call.
+// World map drawn from TopoJSON onto a canvas texture.
+// All dots are green, with the next target in white.
 // Supports drag-to-rotate, scroll-to-zoom, and pinch-to-zoom on mobile.
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const GLOBE_RADIUS      = 1.0;
-const DOT_ALTITUDE      = 0.010;
-const GLOW_ALTITUDE     = 0.014;
+const GLOBE_RADIUS     = 1.0;
+const DOT_ALTITUDE     = 0.010;
+const DOT_SIZE_SMALL   = 0.0028;
+const DOT_SIZE_MEDIUM  = 0.0036;
+const DOT_SIZE_LARGE   = 0.0048;
 
-const DOT_SIZE          = 0.0038;
-const GLOW_SIZE         = 0.0072;
-
-const COLOR_BASE        = new THREE.Color(0x00c853);
-const COLOR_OVERTAKEN   = new THREE.Color(0x00ff66);
-const COLOR_NEXT        = new THREE.Color(0xffffff);
-const COLOR_GLOW_OFF    = new THREE.Color(0x000000);
+// City state colours
+const COLOR_CITY       = new THREE.Color(0x00e676);
+const COLOR_NEXT       = new THREE.Color(0xffffff);
 
 const AUTO_ROTATE_SPEED = 0.0007;
 const PULSE_DURATION    = 120;
 const ZOOM_MIN          = 1.3;
 const ZOOM_MAX          = 3.5;
 
+// Natural Earth TopoJSON — 110m resolution, compact, reliable CDN
 const TOPO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
-let scene, camera, renderer, globeGroup;
-let globeSphere, cityBaseMesh, cityGlowMesh;
+let scene, camera, renderer, globeGroup, cityMesh;
 let animationId      = null;
 let populationData   = [];
 let currentFollowers = 0;
 let pulsingIndices   = new Map();
-
-let baseColorArray, glowColorArray, dummy;
+let colorArray, dummy;
 
 // Rotation state
 let rotX = 0, rotY = 0;
-let isDragging  = false;
-let prevPointer = { x: 0, y: 0 };
-let autoRotate  = true;
-let resumeTimer = null;
+let isDragging    = false;
+let prevPointer   = { x: 0, y: 0 };
+let autoRotate    = true;
+let resumeTimer   = null;
 
-// Pinch state
-let touches       = new Map();
-let lastPinchDist = null;
+// Pinch state — keyed by pointerId
+let touches          = new Map();
+let lastPinchDist    = null;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -82,23 +79,22 @@ export async function initGlobe(container, populationArr) {
 
   const sphereGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 96, 96);
   const sphereMat = new THREE.MeshPhongMaterial({
-    map: mapTexture,
+    map:       mapTexture,
     shininess: 6,
-    specular: new THREE.Color(0x0a1a33),
+    specular:  new THREE.Color(0x0a1a33),
   });
-  globeSphere = new THREE.Mesh(sphereGeo, sphereMat);
-  globeGroup.add(globeSphere);
+  globeGroup.add(new THREE.Mesh(sphereGeo, sphereMat));
 
   const atmoGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 1.06, 64, 64);
   const atmoMat = new THREE.MeshPhongMaterial({
-    color: new THREE.Color(0x0d2444),
-    side: THREE.BackSide,
+    color:       new THREE.Color(0x0d2444),
+    side:        THREE.BackSide,
     transparent: true,
-    opacity: 0.20,
+    opacity:     0.20,
   });
   scene.add(new THREE.Mesh(atmoGeo, atmoMat));
 
-  buildCityMeshes();
+  buildCityMesh();
   bindInteraction(container);
 
   new ResizeObserver(() => {
@@ -115,8 +111,7 @@ export async function initGlobe(container, populationArr) {
 }
 
 export function updateFollowers(next) {
-  if (!cityBaseMesh || next === currentFollowers) return;
-
+  if (!cityMesh || next === currentFollowers) return;
   const prev = currentFollowers;
   currentFollowers = next;
 
@@ -135,34 +130,31 @@ async function buildMapTexture() {
   const TW = 4096;
   const TH = 2048;
   const canvas = document.createElement("canvas");
-  canvas.width = TW;
+  canvas.width  = TW;
   canvas.height = TH;
   const ctx = canvas.getContext("2d");
 
-  // Standard dark ocean background
   ctx.fillStyle = "#060e1a";
   ctx.fillRect(0, 0, TW, TH);
 
   try {
-    const res = await fetch(TOPO_URL);
+    const res  = await fetch(TOPO_URL);
     const topo = await res.json();
-    const geo = topoToGeo(topo, topo.objects.countries);
+    const geo  = topoToGeo(topo, topo.objects.countries);
 
     const project = ([lng, lat]) => [
       ((lng + 180) / 360) * TW,
-      ((90 - lat) / 180) * TH,
+      ((90 - lat)  / 180) * TH,
     ];
 
-    // Standard dark blue land
     ctx.fillStyle = "rgba(18, 38, 68, 0.95)";
     geo.features.forEach(f => {
       drawFeature(ctx, f, project);
       ctx.fill();
     });
 
-    // Standard subtle blue outlines
     ctx.strokeStyle = "rgba(80, 150, 230, 0.45)";
-    ctx.lineWidth = 0.9;
+    ctx.lineWidth   = 0.9;
     geo.features.forEach(f => {
       drawFeature(ctx, f, project);
       ctx.stroke();
@@ -203,8 +195,7 @@ function topoToGeo(topo, obj) {
   const { scale, translate } = topo.transform;
 
   const decoded = topo.arcs.map(arc => {
-    let x = 0;
-    let y = 0;
+    let x = 0, y = 0;
     return arc.map(([dx, dy]) => {
       x += dx;
       y += dy;
@@ -246,60 +237,41 @@ function topoToGeo(topo, obj) {
   };
 }
 
-// ── City meshes ───────────────────────────────────────────────────────────────
+// ── City mesh ─────────────────────────────────────────────────────────────────
 
-function buildCityMeshes() {
+function buildCityMesh() {
   const count = populationData.length;
-  const geo = new THREE.CircleGeometry(1, 10);
 
-  const baseMat = new THREE.MeshBasicMaterial({
+  const geo = new THREE.CircleGeometry(1, 7);
+
+  const mat = new THREE.MeshBasicMaterial({
     vertexColors: true,
-    side: THREE.DoubleSide,
-    transparent: true,
-    opacity: 0.95,
-    depthWrite: false,
+    side:         THREE.DoubleSide,
+    depthWrite:   false,
+    transparent:  true,
+    opacity:      0.95,
   });
 
-  const glowMat = new THREE.MeshBasicMaterial({
-    vertexColors: true,
-    side: THREE.DoubleSide,
-    transparent: true,
-    opacity: 0.9,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
+  cityMesh = new THREE.InstancedMesh(geo, mat, count);
+  cityMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  cityMesh.renderOrder = 1;
 
-  cityBaseMesh = new THREE.InstancedMesh(geo, baseMat, count);
-  cityGlowMesh = new THREE.InstancedMesh(geo, glowMat, count);
-
-  cityBaseMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  cityGlowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-
-  cityBaseMesh.renderOrder = 1;
-  cityGlowMesh.renderOrder = 2;
-
-  baseColorArray = new Float32Array(count * 3);
-  glowColorArray = new Float32Array(count * 3);
-  dummy = new THREE.Object3D();
+  colorArray = new Float32Array(count * 3);
+  dummy      = new THREE.Object3D();
 
   populationData.forEach((city, i) => {
-    placeInstance(cityBaseMesh, i, city.lat, city.lng, DOT_SIZE, DOT_ALTITUDE);
-    placeInstance(cityGlowMesh, i, city.lat, city.lng, GLOW_SIZE, GLOW_ALTITUDE);
+    placeInstance(i, city.lat, city.lng, sizeFor(city.population));
   });
-
-  cityBaseMesh.instanceMatrix.needsUpdate = true;
-  cityGlowMesh.instanceMatrix.needsUpdate = true;
+  cityMesh.instanceMatrix.needsUpdate = true;
 
   recolour();
-
-  globeGroup.add(cityBaseMesh);
-  globeGroup.add(cityGlowMesh);
+  globeGroup.add(cityMesh);
 }
 
-function placeInstance(mesh, i, lat, lng, sz, altitude) {
-  const phi   = (90 - lat) * (Math.PI / 180);
+function placeInstance(i, lat, lng, sz) {
+  const phi   = (90 - lat)  * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
-  const r     = GLOBE_RADIUS + altitude;
+  const r     = GLOBE_RADIUS + DOT_ALTITUDE;
 
   dummy.position.set(
     -r * Math.sin(phi) * Math.cos(theta),
@@ -310,29 +282,25 @@ function placeInstance(mesh, i, lat, lng, sz, altitude) {
   dummy.lookAt(0, 0, 0);
   dummy.rotateX(Math.PI);
   dummy.updateMatrix();
-  mesh.setMatrixAt(i, dummy.matrix);
+  cityMesh.setMatrixAt(i, dummy.matrix);
 }
 
 function recolour() {
-  if (!cityBaseMesh || !cityGlowMesh) return;
+  if (!cityMesh) return;
 
   const next = findNextIdx(currentFollowers);
 
   populationData.forEach((city, i) => {
-    COLOR_BASE.toArray(baseColorArray, i * 3);
-
     if (i === next) {
-      COLOR_NEXT.toArray(glowColorArray, i * 3);
+      COLOR_NEXT.toArray(colorArray, i * 3);
     } else {
-      COLOR_OVERTAKEN.toArray(glowColorArray, i * 3);
+      COLOR_CITY.toArray(colorArray, i * 3);
     }
   });
 
-  cityBaseMesh.instanceColor = new THREE.InstancedBufferAttribute(baseColorArray.slice(), 3);
-  cityBaseMesh.instanceColor.needsUpdate = true;
-
-  cityGlowMesh.instanceColor = new THREE.InstancedBufferAttribute(glowColorArray.slice(), 3);
-  cityGlowMesh.instanceColor.needsUpdate = true;
+  cityMesh.instanceColor = new THREE.InstancedBufferAttribute(colorArray.slice(), 3);
+  cityMesh.instanceColor.needsUpdate = true;
+  cityMesh.instanceMatrix.needsUpdate = true;
 }
 
 // ── Animation loop ────────────────────────────────────────────────────────────
@@ -348,20 +316,19 @@ function startLoop() {
     globeGroup.rotation.x = rotX;
     globeGroup.rotation.y = rotY;
 
-    if (pulsingIndices.size > 0 && cityGlowMesh?.instanceColor) {
+    if (pulsingIndices.size > 0 && cityMesh?.instanceColor) {
       let dirty = false;
 
       pulsingIndices.forEach((left, idx) => {
         const t = left / PULSE_DURATION;
         const p = Math.abs(Math.sin(t * Math.PI * 5));
-
-        pulseColor.setRGB(0.05 + p * 0.20, 0.80 + p * 0.20, 0.20 + p * 0.18);
-        pulseColor.toArray(glowColorArray, idx * 3);
+        pulseColor.setRGB(0.0, 0.85 + p * 0.15, 0.35 + p * 0.2);
+        pulseColor.toArray(colorArray, idx * 3);
 
         const rem = left - 1;
         if (rem <= 0) {
           pulsingIndices.delete(idx);
-          COLOR_OVERTAKEN.toArray(glowColorArray, idx * 3);
+          COLOR_CITY.toArray(colorArray, idx * 3);
         } else {
           pulsingIndices.set(idx, rem);
         }
@@ -369,7 +336,7 @@ function startLoop() {
         dirty = true;
       });
 
-      if (dirty) cityGlowMesh.instanceColor.needsUpdate = true;
+      if (dirty) cityMesh.instanceColor.needsUpdate = true;
     }
 
     renderer.render(scene, camera);
@@ -384,7 +351,7 @@ function bindInteraction(el) {
   el.addEventListener("pointerdown", e => {
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size === 1) {
-      isDragging = true;
+      isDragging  = true;
       prevPointer = { x: e.clientX, y: e.clientY };
       el.setPointerCapture(e.pointerId);
       stopAuto();
@@ -398,13 +365,11 @@ function bindInteraction(el) {
     if (touches.size === 2) {
       isDragging = false;
       const [a, b] = [...touches.values()];
-      const dist = Math.hypot(b.x - a.x, b.y - a.y);
-
+      const dist   = Math.hypot(b.x - a.x, b.y - a.y);
       if (lastPinchDist !== null) {
         const delta = (lastPinchDist - dist) * 0.012;
         zoom(delta);
       }
-
       lastPinchDist = dist;
       return;
     }
@@ -421,21 +386,21 @@ function bindInteraction(el) {
 
   el.addEventListener("pointerup", e => {
     touches.delete(e.pointerId);
-    isDragging = false;
+    isDragging    = false;
     lastPinchDist = null;
     scheduleResume();
   });
 
   el.addEventListener("pointercancel", e => {
     touches.delete(e.pointerId);
-    isDragging = false;
+    isDragging    = false;
     lastPinchDist = null;
   });
 
   el.addEventListener("pointerleave", e => {
     if (touches.has(e.pointerId)) {
       touches.delete(e.pointerId);
-      isDragging = false;
+      isDragging    = false;
       lastPinchDist = null;
       scheduleResume();
     }
@@ -472,6 +437,12 @@ function scheduleResume() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function sizeFor(pop) {
+  if (pop >= 5_000_000) return DOT_SIZE_LARGE;
+  if (pop >= 500_000)   return DOT_SIZE_MEDIUM;
+  return DOT_SIZE_SMALL;
+}
+
 function findNextIdx(followers) {
   let lo = 0;
   let hi = populationData.length - 1;
@@ -490,4 +461,3 @@ function destroy() {
   if (resumeTimer) clearTimeout(resumeTimer);
   renderer.dispose();
 }
-```
