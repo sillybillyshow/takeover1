@@ -1,3 +1,4 @@
+```js
 // globe.js — WebGL globe renderer using Three.js r128
 // All cities rendered as instanced flat disks in a single GPU draw call.
 // World map drawn from TopoJSON onto a canvas texture.
@@ -461,3 +462,4 @@ function destroy() {
   if (resumeTimer) clearTimeout(resumeTimer);
   renderer.dispose();
 }
+```
