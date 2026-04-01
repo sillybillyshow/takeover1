@@ -1,33 +1,34 @@
 // globe.js — WebGL globe renderer using Three.js r128
-// All cities are rendered as same-size points.
-// Base layer keeps every point visible.
-// Glow layer makes overtaken cities bright neon green and the next target white.
+// Smaller city dots with a dedicated neon glow layer for overtaken cities.
+// The globe map itself is darker and slightly green-tinted so green highlights read clearly.
 // Supports drag-to-rotate, scroll-to-zoom, and pinch-to-zoom on mobile.
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const GLOBE_RADIUS        = 1.0;
-const DOT_ALTITUDE        = 0.012;
-const GLOW_ALTITUDE       = 0.018;
-const DOT_SIZE            = 0.010;
-const GLOW_SIZE           = 0.018;
+const GLOBE_RADIUS      = 1.0;
+const DOT_ALTITUDE      = 0.010;
+const GLOW_ALTITUDE     = 0.016;
 
-const COLOR_BASE          = new THREE.Color(0x6a768a);
-const COLOR_OVERTAKEN     = new THREE.Color(0x00ff66);
-const COLOR_NEXT          = new THREE.Color(0xffffff);
-const COLOR_GLOW_OFF      = new THREE.Color(0x000000);
+const DOT_SIZE          = 0.0055;
+const GLOW_SIZE         = 0.014;
 
-const AUTO_ROTATE_SPEED   = 0.0007;
-const PULSE_DURATION      = 120;
-const ZOOM_MIN            = 1.3;
-const ZOOM_MAX            = 3.5;
+const COLOR_BASE        = new THREE.Color(0x3f4d46);
+const COLOR_FUTURE      = new THREE.Color(0x101512);
+const COLOR_OVERTAKEN   = new THREE.Color(0x00ff66);
+const COLOR_NEXT        = new THREE.Color(0xd8ffe8);
+const COLOR_GLOW_OFF    = new THREE.Color(0x000000);
+
+const AUTO_ROTATE_SPEED = 0.0007;
+const PULSE_DURATION    = 120;
+const ZOOM_MIN          = 1.3;
+const ZOOM_MAX          = 3.5;
 
 const TOPO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
 let scene, camera, renderer, globeGroup;
-let cityBaseMesh, cityGlowMesh;
+let globeSphere, cityBaseMesh, cityGlowMesh;
 let animationId      = null;
 let populationData   = [];
 let currentFollowers = 0;
@@ -64,13 +65,13 @@ export async function initGlobe(container, populationArr) {
   renderer.setClearColor(0x000000, 0);
   container.appendChild(renderer.domElement);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 
-  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  const sun = new THREE.DirectionalLight(0xbfffd8, 0.95);
   sun.position.set(5, 3, 5);
   scene.add(sun);
 
-  const fill = new THREE.DirectionalLight(0x4488ff, 0.12);
+  const fill = new THREE.DirectionalLight(0x3d7a58, 0.18);
   fill.position.set(-5, -2, -3);
   scene.add(fill);
 
@@ -82,17 +83,20 @@ export async function initGlobe(container, populationArr) {
   const sphereGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 96, 96);
   const sphereMat = new THREE.MeshPhongMaterial({
     map: mapTexture,
-    shininess: 6,
-    specular: new THREE.Color(0x0a1a33),
+    shininess: 8,
+    specular: new THREE.Color(0x0b2018),
+    emissive: new THREE.Color(0x03100b),
+    emissiveIntensity: 0.35,
   });
-  globeGroup.add(new THREE.Mesh(sphereGeo, sphereMat));
+  globeSphere = new THREE.Mesh(sphereGeo, sphereMat);
+  globeGroup.add(globeSphere);
 
   const atmoGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 1.06, 64, 64);
   const atmoMat = new THREE.MeshPhongMaterial({
-    color: new THREE.Color(0x0d2444),
+    color: new THREE.Color(0x103224),
     side: THREE.BackSide,
     transparent: true,
-    opacity: 0.20,
+    opacity: 0.14,
   });
   scene.add(new THREE.Mesh(atmoGeo, atmoMat));
 
@@ -137,7 +141,8 @@ async function buildMapTexture() {
   canvas.height = TH;
   const ctx = canvas.getContext("2d");
 
-  ctx.fillStyle = "#060e1a";
+  // Dark green-tinted ocean so neon green markers stand out
+  ctx.fillStyle = "#05110c";
   ctx.fillRect(0, 0, TW, TH);
 
   try {
@@ -150,21 +155,30 @@ async function buildMapTexture() {
       ((90 - lat) / 180) * TH,
     ];
 
-    ctx.fillStyle = "rgba(18, 38, 68, 0.95)";
+    // Land slightly lighter and greener than the ocean
+    ctx.fillStyle = "rgba(14, 34, 24, 0.98)";
     geo.features.forEach(f => {
       drawFeature(ctx, f, project);
       ctx.fill();
     });
 
-    ctx.strokeStyle = "rgba(80, 150, 230, 0.45)";
+    // Subtle green outline
+    ctx.strokeStyle = "rgba(50, 150, 96, 0.28)";
     ctx.lineWidth = 0.9;
     geo.features.forEach(f => {
       drawFeature(ctx, f, project);
       ctx.stroke();
     });
+
+    // Soft vignette to keep the center readable
+    const grad = ctx.createRadialGradient(TW / 2, TH / 2, TH * 0.15, TW / 2, TH / 2, TH * 0.75);
+    grad.addColorStop(0, "rgba(0, 255, 102, 0.03)");
+    grad.addColorStop(1, "rgba(0, 0, 0, 0.18)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, TW, TH);
   } catch (err) {
     console.warn("Globe map fetch failed, using plain surface", err);
-    ctx.fillStyle = "#091422";
+    ctx.fillStyle = "#08150f";
     ctx.fillRect(0, 0, TW, TH);
   }
 
@@ -198,7 +212,8 @@ function topoToGeo(topo, obj) {
   const { scale, translate } = topo.transform;
 
   const decoded = topo.arcs.map(arc => {
-    let x = 0, y = 0;
+    let x = 0;
+    let y = 0;
     return arc.map(([dx, dy]) => {
       x += dx;
       y += dy;
@@ -250,7 +265,7 @@ function buildCityMeshes() {
     vertexColors: true,
     side: THREE.DoubleSide,
     transparent: true,
-    opacity: 0.95,
+    opacity: 0.92,
     depthWrite: false,
   });
 
@@ -313,13 +328,14 @@ function recolour() {
   const next = findNextIdx(currentFollowers);
 
   populationData.forEach((city, i) => {
-    COLOR_BASE.toArray(baseColorArray, i * 3);
-
     if (city.population < currentFollowers) {
+      COLOR_BASE.toArray(baseColorArray, i * 3);
       COLOR_OVERTAKEN.toArray(glowColorArray, i * 3);
     } else if (i === next) {
+      COLOR_BASE.toArray(baseColorArray, i * 3);
       COLOR_NEXT.toArray(glowColorArray, i * 3);
     } else {
+      COLOR_FUTURE.toArray(baseColorArray, i * 3);
       COLOR_GLOW_OFF.toArray(glowColorArray, i * 3);
     }
   });
@@ -351,7 +367,7 @@ function startLoop() {
         const t = left / PULSE_DURATION;
         const p = Math.abs(Math.sin(t * Math.PI * 5));
 
-        pulseColor.setRGB(0.2 + p * 0.8, 0.95 + p * 0.05, 0.35 + p * 0.2);
+        pulseColor.setRGB(0.15 + p * 0.45, 0.85 + p * 0.15, 0.20 + p * 0.25);
         pulseColor.toArray(glowColorArray, idx * 3);
 
         const rem = left - 1;
