@@ -53,7 +53,6 @@
       gap: 20px;
     }
 
-    /* ── Header ── */
     .header { text-align: center; padding-top: 8px; }
 
     .header h1 {
@@ -67,14 +66,13 @@
     .header h1 span { color: var(--red); }
 
     .header-sub {
-      font-size: 0.85rem;
+      max-width: 640px;
+      margin: 8px auto 0;
+      font-size: 0.9rem;
       color: var(--muted);
-      margin-top: 4px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
+      line-height: 1.5;
     }
 
-    /* ── Timer ── */
     .timer-block { display: flex; flex-direction: column; gap: 8px; }
 
     .timer-label {
@@ -103,7 +101,6 @@
       box-shadow: 0 0 8px var(--red);
     }
 
-    /* ── Globe ── */
     .globe-wrap {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -112,18 +109,16 @@
       position: relative;
     }
 
-    /* Three.js appends its canvas here — touch-action: none lets us handle all pointer events */
     #globe-container {
       width: 100%;
       height: 420px;
       cursor: grab;
       display: block;
-      touch-action: none; /* prevents browser scroll/zoom interfering with pinch */
+      touch-action: none;
     }
 
     #globe-container:active { cursor: grabbing; }
 
-    /* Colour legend — bottom left */
     .globe-legend {
       position: absolute;
       bottom: 14px;
@@ -149,12 +144,10 @@
       flex-shrink: 0;
     }
 
-    /* Green with glow matches the vivid overtaken dots on the globe */
     .legend-dot--overtaken { background: var(--green); box-shadow: 0 0 5px var(--green-glow); }
     .legend-dot--next      { background: #fff; }
     .legend-dot--future    { background: #2a2a2a; border: 1px solid #444; }
 
-    /* Interaction hints — top right */
     .globe-hints {
       position: absolute;
       top: 12px;
@@ -173,7 +166,6 @@
       text-transform: uppercase;
     }
 
-    /* ── Summary panels ── */
     .summary {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
@@ -229,7 +221,6 @@
 
     .panel--center .panel-value { color: #fff; font-size: 2rem; }
 
-    /* ── Search ── */
     .search-panel { position: relative; }
     .search-row   { display: flex; gap: 8px; }
 
@@ -299,15 +290,16 @@
 
     .search-result:hover { background: var(--surface2); color: var(--red); }
 
-    /* ── Table ── */
-    .table-wrap {
+    .table-wrap,
+    .country-wrap {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       overflow: hidden;
     }
 
-    .table-header {
+    .table-header,
+    .country-table-header {
       display: grid;
       grid-template-columns: 56px 1fr auto;
       gap: 12px;
@@ -320,7 +312,6 @@
       font-weight: 500;
     }
 
-    /* Fixed-height viewport — only ~25 rows exist in the DOM at any time */
     #table-body {
       position: relative;
       height: 440px;
@@ -329,10 +320,12 @@
       scrollbar-color: var(--surface2) transparent;
     }
 
-    #table-body::-webkit-scrollbar { width: 4px; }
-    #table-body::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 4px; }
+    #table-body::-webkit-scrollbar,
+    .country-table-scroll::-webkit-scrollbar { width: 4px; }
 
-    /* Spacer height = rows × 44px — gives the scrollbar correct proportions for 48k rows */
+    #table-body::-webkit-scrollbar-thumb,
+    .country-table-scroll::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 4px; }
+
     #table-spacer {
       position: absolute;
       top: 0; left: 0;
@@ -340,7 +333,6 @@
       pointer-events: none;
     }
 
-    /* Rows are absolutely positioned via translateY */
     .row {
       position: absolute;
       top: 0; left: 0; right: 0;
@@ -395,12 +387,104 @@
       text-align: right;
     }
 
-    /* ── Footer ── */
+    .country-section-header {
+      padding: 18px 18px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .country-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .country-copy {
+      margin-top: 4px;
+      font-size: 0.84rem;
+      color: var(--muted);
+      line-height: 1.45;
+      max-width: 460px;
+    }
+
+    .country-tabs {
+      display: inline-flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .country-tab {
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .country-tab.is-active {
+      background: rgba(255,0,80,0.12);
+      color: var(--text);
+      border-color: rgba(255,0,80,0.4);
+    }
+
+    .country-table-meta {
+      padding: 14px 18px 0;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .country-table-scroll {
+      max-height: 420px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--surface2) transparent;
+    }
+
+    .country-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .country-table td {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.88rem;
+      color: var(--text);
+      vertical-align: middle;
+    }
+
+    .country-table td:first-child {
+      width: 56px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .country-table td:last-child {
+      text-align: right;
+      white-space: nowrap;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .country-empty {
+      padding: 18px;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
     .page-footer { text-align: center; font-size: 0.78rem; color: var(--muted); }
     .page-footer a { color: var(--muted); text-decoration: underline; }
     .page-footer a:hover { color: var(--text); }
 
-    /* ── Responsive ── */
     @media (max-width: 560px) {
       .summary { grid-template-columns: 1fr; }
       .panel--center { order: -1; }
@@ -408,6 +492,8 @@
       .btn { height: 44px; }
       #globe-container { height: 300px; }
       #table-body { height: 360px; }
+      .country-section-header { flex-direction: column; }
+      .country-tabs { justify-content: flex-start; }
     }
   </style>
 </head>
@@ -416,7 +502,7 @@
 
     <header class="header">
       <h1>Silly Billy Show <span>Takeover</span></h1>
-      <p class="header-sub">Live TikTok follower ranking vs world cities</p>
+      <p class="header-sub">Follower count updates may take over a minute to pull through, you won't need to refresh the page</p>
     </header>
 
     <div class="timer-block">
@@ -429,8 +515,6 @@
       </div>
     </div>
 
-    <!-- Globe — Three.js canvas injected by globe.js.
-         touch-action:none on #globe-container is critical for pinch-zoom on mobile. -->
     <div class="globe-wrap">
       <div id="globe-container"></div>
 
@@ -493,13 +577,37 @@
       </div>
     </div>
 
+    <section class="country-wrap">
+      <div class="country-section-header">
+        <div>
+          <div class="country-title">Country Takeover</div>
+          <p class="country-copy">Countries are ranked by the combined population of places from this dataset, so you can switch between the countries already overtaken and the ones still ahead.</p>
+        </div>
+        <div class="country-tabs" role="tablist" aria-label="Country takeover tabs">
+          <button class="country-tab is-active" id="country-tab-overtaken" data-tab="overtaken" type="button" role="tab" aria-selected="true">Overtaken Countries</button>
+          <button class="country-tab" id="country-tab-future" data-tab="future" type="button" role="tab" aria-selected="false">Countries To Overtake</button>
+        </div>
+      </div>
+      <div class="country-table-meta" id="country-table-title">Loading country totals…</div>
+      <div class="country-table-header">
+        <span>#</span>
+        <span>Country</span>
+        <span>Population</span>
+      </div>
+      <div class="country-table-scroll">
+        <table class="country-table">
+          <tbody id="country-table-body"></tbody>
+        </table>
+      </div>
+      <div class="country-empty" id="country-empty" hidden>No countries available for this view yet.</div>
+    </section>
+
     <footer class="page-footer">
       Data: <a href="https://simplemaps.com/data/world-cities" target="_blank" rel="noreferrer">Simplemaps World Cities Database</a>
     </footer>
 
   </div>
 
-  <!-- type="module" required for dynamic import('./globe.js') in app.js -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
