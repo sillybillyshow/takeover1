@@ -50,15 +50,8 @@ async function loadData() {
       keyLower: cityKey(city).toLowerCase(),
     }));
 
-  const labelCounts = new Map();
   searchableLocations.forEach(entry => {
-    labelCounts.set(entry.display, (labelCounts.get(entry.display) || 0) + 1);
-  });
-
-  searchableLocations.forEach(entry => {
-    entry.label = labelCounts.get(entry.display) > 1
-      ? `${entry.display} (${fmt(entry.city.population)})`
-      : entry.display;
+    entry.label = entry.display;
     entry.labelLower = entry.label.toLowerCase();
   });
 
