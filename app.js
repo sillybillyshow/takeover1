@@ -79,11 +79,8 @@ async function loadData() {
     followers = cached;
     hasLoaded = true;
     buildFlatList();
-    renderPanels();
-    drawRows();
-    renderCountryTable();
+    refreshFollowerViews();
     scrollToFollower("auto");
-    if (globeHandle) globeHandle.update(followers);
   }
 
   await fetchFollowers();
@@ -125,10 +122,7 @@ async function fetchFollowers() {
       hasLoaded = true;
       writeCache(v);
       buildFlatList();
-      renderPanels();
-      drawRows();
-      renderCountryTable();
-      if (globeHandle) globeHandle.update(followers);
+      refreshFollowerViews();
       if (!wasLoaded) scrollToFollower("auto");
     }
   } catch (e) {
@@ -295,6 +289,13 @@ function renderPanels() {
   panelFollowers.textContent = fmt(followers);
   panelNextName.textContent = next ? cityKey(next) : "Top of the list!";
   panelNextPop.textContent = next ? fmt(next.population) : "—";
+}
+
+function refreshFollowerViews() {
+  renderPanels();
+  drawRows();
+  renderCountryTable();
+  if (globeHandle) globeHandle.update(followers);
 }
 
 // ── Country table ─────────────────────────────────────────────────────────────
