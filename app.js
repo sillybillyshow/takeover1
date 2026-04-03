@@ -337,7 +337,6 @@ function renderCountryTable() {
   rows.forEach((entry, index) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${index + 1}</td>
       <td>${entry.country}</td>
       <td>${fmt(entry.population)}</td>`;
     countryTableBody.appendChild(tr);
