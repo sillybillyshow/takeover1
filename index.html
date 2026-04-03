@@ -473,7 +473,15 @@
       color: var(--muted);
     }
 
-    .page-footer { text-align: center; font-size: 0.78rem; color: var(--muted); }
+    .page-footer {
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
     .page-footer a { color: var(--muted); text-decoration: underline; }
     .page-footer a:hover { color: var(--text); }
 
@@ -592,7 +600,8 @@
     </section>
 
     <footer class="page-footer">
-      Data: <a href="https://simplemaps.com/data/world-cities" target="_blank" rel="noreferrer">Simplemaps World Cities Database</a>
+      <div>City data source: <a href="https://simplemaps.com/data/world-cities" target="_blank" rel="noreferrer">Simplemaps World Cities Database</a></div>
+      <div>Country data source: <a href="https://restcountries.com/" target="_blank" rel="noreferrer">REST Countries</a></div>
     </footer>
 
   </div>
