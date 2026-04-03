@@ -28,7 +28,7 @@
       --font-display: 'Bebas Neue', sans-serif;
       --font-body:    'DM Sans', sans-serif;
       --radius:     12px;
-      --row-height: 44px; /* must match ROW_HEIGHT in app.js */
+      --row-height: 44px;
     }
 
     html, body { height: 100%; }
@@ -388,11 +388,10 @@
     }
 
     .country-section-header {
-      padding: 18px 18px 14px;
+      padding: 18px;
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 14px;
+      align-items: center;
+      gap: 12px;
       border-bottom: 1px solid var(--border);
     }
 
@@ -400,21 +399,14 @@
       font-size: 1rem;
       font-weight: 600;
       color: var(--text);
-    }
-
-    .country-copy {
-      margin-top: 4px;
-      font-size: 0.84rem;
-      color: var(--muted);
-      line-height: 1.45;
-      max-width: 460px;
+      margin-right: auto;
     }
 
     .country-tabs {
       display: inline-flex;
       gap: 8px;
       flex-wrap: wrap;
-      justify-content: flex-end;
+      align-items: center;
     }
 
     .country-tab {
@@ -492,8 +484,8 @@
       .btn { height: 44px; }
       #globe-container { height: 300px; }
       #table-body { height: 360px; }
-      .country-section-header { flex-direction: column; }
-      .country-tabs { justify-content: flex-start; }
+      .country-section-header { align-items: flex-start; flex-direction: column; }
+      .country-title { margin-right: 0; }
     }
   </style>
 </head>
@@ -502,7 +494,7 @@
 
     <header class="header">
       <h1>Silly Billy Show <span>Takeover</span></h1>
-      <p class="header-sub">Follower count updates may take over a minute to pull through, you won't need to refresh the page</p>
+      <p class="header-sub">Follower count updates may take over a minute to pull through</p>
     </header>
 
     <div class="timer-block">
@@ -579,10 +571,7 @@
 
     <section class="country-wrap">
       <div class="country-section-header">
-        <div>
-          <div class="country-title">Country Takeover</div>
-          <p class="country-copy">Countries are ranked by the combined population of places from this dataset, so you can switch between the countries already overtaken and the ones still ahead.</p>
-        </div>
+        <div class="country-title">Country Takeover</div>
         <div class="country-tabs" role="tablist" aria-label="Country takeover tabs">
           <button class="country-tab is-active" id="country-tab-overtaken" data-tab="overtaken" type="button" role="tab" aria-selected="true">Overtaken Countries</button>
           <button class="country-tab" id="country-tab-future" data-tab="future" type="button" role="tab" aria-selected="false">Countries To Overtake</button>
