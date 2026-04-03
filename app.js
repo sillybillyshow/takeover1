@@ -1,6 +1,9 @@
 // The raw URL for the public GitHub Gist that the Cloudflare Worker writes the follower count to
 const GIST_URL = "https://gist.githubusercontent.com/sillybillyshow/ae68c331d964ff293623a01ca1766256/raw/tiktok_stats.json";
 
+// Official World Bank total population indicator used for the country table
+const COUNTRY_POP_URL = "countrypopulations.json";
+
 // The localStorage key used to persist the last known follower count across page loads
 const FOLLOWER_CACHE_KEY = "sbs-followers-cache";
 
@@ -49,14 +52,10 @@ const countryTabs = [...document.querySelectorAll(".country-tab")];
 // ── Data loading ──────────────────────────────────────────────────────────────
 
 async function loadData() {
-  // Fetch and sort the population dataset ascending so binary search works correctly
   const res = await fetch("populationdata.json");
   populationData = await res.json();
   populationData.sort((a, b) => a.population - b.population);
-  countryData = buildCountryData(populationData);
 
-  // Build the search index once — reversed so largest cities appear first in results,
-  // keys pre-lowercased to avoid doing it on every keystroke
   searchableLocations = populationData
     .slice()
     .reverse()
@@ -64,8 +63,8 @@ async function loadData() {
 
   setupSearch();
   setupCountryTabs();
+  fetchCountryData();
 
-  // Initialise the globe — must be awaited because it fetches the map texture
   if (globeContainer) {
     try {
       const { initGlobe } = await import("./globe.js");
@@ -75,7 +74,6 @@ async function loadData() {
     }
   }
 
-  // Render immediately from cache if available so the page isn't blank on return visits
   const cached = readCache();
   if (cached !== null) {
     followers = cached;
@@ -88,7 +86,6 @@ async function loadData() {
     if (globeHandle) globeHandle.update(followers);
   }
 
-  // Fetch the live count then start the polling clock
   await fetchFollowers();
   startClock();
 }
@@ -116,7 +113,6 @@ function writeCache(v) {
 
 async function fetchFollowers() {
   try {
-    // Cache-bust with a timestamp so GitHub's CDN always returns the latest value
     const res = await fetch(`${GIST_URL}?t=${Date.now()}`);
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
@@ -137,6 +133,29 @@ async function fetchFollowers() {
     }
   } catch (e) {
     console.error("Follower fetch failed", e);
+  }
+}
+
+// ── Countries ─────────────────────────────────────────────────────────────────
+
+async function fetchCountryData() {
+  try {
+    const res = await fetch(COUNTRY_POP_URL);
+    if (!res.ok) throw new Error(res.status);
+    const rows = await res.json();
+
+    countryData = rows
+      .filter(row => row && Number.isFinite(Number(row.population)))
+      .map(row => ({
+        country: row.country,
+        population: Number(row.population),
+      }));
+
+    renderCountryTable();
+  } catch (e) {
+    console.error("Country population fetch failed", e);
+    if (countryTableTitle) countryTableTitle.textContent = "Country totals unavailable right now.";
+    if (countryEmpty) countryEmpty.hidden = false;
   }
 }
 
@@ -280,14 +299,6 @@ function renderPanels() {
 
 // ── Country table ─────────────────────────────────────────────────────────────
 
-function buildCountryData(rows) {
-  const totals = new Map();
-  rows.forEach(({ country, population }) => {
-    totals.set(country, (totals.get(country) || 0) + population);
-  });
-  return [...totals.entries()].map(([country, population]) => ({ country, population }));
-}
-
 function setupCountryTabs() {
   countryTabs.forEach(tab => {
     tab.addEventListener("click", () => {
@@ -303,7 +314,8 @@ function setupCountryTabs() {
 }
 
 function renderCountryTable() {
-  if (!countryTableBody || !countryTableTitle || !countryData.length) return;
+  if (!countryTableBody || !countryTableTitle) return;
+  if (!countryData.length) return;
 
   const overtaken = countryData
     .filter(entry => entry.population < followers)
@@ -315,8 +327,8 @@ function renderCountryTable() {
 
   const rows = activeCountryTab === "overtaken" ? overtaken : future;
   countryTableTitle.textContent = activeCountryTab === "overtaken"
-    ? `${rows.length} countries overtaken based on the combined population in this dataset`
-    : `${rows.length} countries still ahead based on the combined population in this dataset`;
+    ? `${rows.length} countries overtaken`
+    : `${rows.length} countries to overtake`;
 
   countryTableBody.innerHTML = "";
   countryEmpty.hidden = rows.length > 0;
